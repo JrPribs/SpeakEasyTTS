@@ -46,6 +46,18 @@
     "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Services.swiftdeps",
     "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Services.dia"
   },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayView.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayView.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayView~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayView.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayView.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayWindow.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayWindow.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayWindow.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayWindow.dia"
+  },
   "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/InputWindowView.swift": {
     "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/InputWindowView.swift.o",
     "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/InputWindowView~partial.swiftmodule",

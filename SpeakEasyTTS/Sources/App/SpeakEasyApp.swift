@@ -45,6 +45,7 @@ struct SpeakEasyApp: App {
 /// AppDelegate handles application lifecycle and global hotkey registration
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeyManager: HotkeyManager?
+    private var floatingOverlay: FloatingOverlayController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize hotkey manager for global shortcuts
@@ -56,6 +57,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Hide dock icon (menu bar app only)
         NSApp.setActivationPolicy(.accessory)
+        
+        // Initialize and show floating overlay
+        floatingOverlay = FloatingOverlayController.shared
+        floatingOverlay?.show()
         
         print("SpeakEasyTTS launched successfully")
     }

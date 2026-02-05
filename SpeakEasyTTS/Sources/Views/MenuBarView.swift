@@ -281,6 +281,20 @@ struct MenuBarView: View {
             .padding(.vertical, 6)
             
             Button {
+                FloatingOverlayController.shared.toggle()
+            } label: {
+                HStack {
+                    Image(systemName: "pip")
+                    Text("Toggle Floating Widget")
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+            
+            Button {
                 openSettingsWindow()
             } label: {
                 HStack {

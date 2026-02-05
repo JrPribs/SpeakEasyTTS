@@ -52,6 +52,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayWindow.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/InputWindowView.swift"
         },
         {
@@ -82,6 +90,8 @@
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeechService.swift.o",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Models.swift.o",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Services.swift.o",
+        "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayView.swift.o",
+        "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayWindow.swift.o",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/InputWindowView.swift.o",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/MenuBarView.swift.o",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SettingsView.swift.o"
@@ -170,6 +180,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayWindow.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/InputWindowView.swift.o"
         },
         {
@@ -194,6 +212,8 @@
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Core/SpeechService.swift",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Models/Models.swift",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Services/Services.swift",
+        "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayView.swift",
+        "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayWindow.swift",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/InputWindowView.swift",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/MenuBarView.swift",
         "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/SettingsView.swift"
@@ -220,6 +240,8 @@
       "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Core/SpeechService.swift",
       "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Models/Models.swift",
       "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Services/Services.swift",
+      "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayView.swift",
+      "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayWindow.swift",
       "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/InputWindowView.swift",
       "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/MenuBarView.swift",
       "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/SettingsView.swift",
@@ -333,6 +355,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/FloatingOverlayWindow.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/InputWindowView.swift"
         },
         {
@@ -360,6 +390,14 @@
         {
           "kind" : "file",
           "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/EdgeTTSService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/FloatingOverlayWindow.swift.o"
         },
         {
           "kind" : "file",

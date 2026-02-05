@@ -141,53 +141,146 @@ final class ClipboardService {
         pasteboard.setString(text, forType: .string)
     }
     
-    /// Get selected text from the frontmost application
-    /// Uses multiple methods for maximum compatibility
+    /// Get selected text from the frontmost application using Accessibility API
+    /// This reads the selection DIRECTLY without copying to clipboard
     func getSelectedText(completion: @escaping (String?) -> Void) {
-        // Method 1: Try AppleScript first (most reliable for getting selection)
-        getSelectedTextViaAppleScript { [weak self] text in
-            if let text = text, !text.isEmpty {
-                completion(text)
-                return
-            }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let selectedText = self.getSelectedTextViaAccessibility()
             
-            // Method 2: Fall back to simulating Cmd+C
-            self?.copySelectedTextThenRead(completion: completion)
+            DispatchQueue.main.async {
+                if let text = selectedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    completion(text)
+                } else {
+                    // Fall back to clipboard copy method
+                    self.copySelectedTextThenRead(completion: completion)
+                }
+            }
         }
     }
     
-    /// Use AppleScript to get selected text from System Events
-    private func getSelectedTextViaAppleScript(completion: @escaping (String?) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let script = """
-            tell application "System Events"
-                keystroke "c" using {command down}
-                delay 0.1
-            end tell
-            delay 0.1
-            the clipboard as text
-            """
+    /// Use Accessibility API to read selected text directly (no clipboard modification)
+    private func getSelectedTextViaAccessibility() -> String? {
+        // Get the focused application
+        guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
+            return nil
+        }
+        
+        let pid = focusedApp.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
+        
+        // Get the focused UI element
+        var focusedElement: CFTypeRef?
+        let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+        
+        guard focusResult == .success, let element = focusedElement else {
+            // Try to get the focused window's first responder
+            return getSelectedTextFromWindow(appElement: appElement)
+        }
+        
+        // Try to get selected text from the focused element
+        return getSelectedTextFromElement(element as! AXUIElement)
+    }
+    
+    /// Get selected text from a specific AXUIElement
+    private func getSelectedTextFromElement(_ element: AXUIElement) -> String? {
+        // Try kAXSelectedTextAttribute first (most direct)
+        var selectedText: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedText)
+        
+        if result == .success, let text = selectedText as? String, !text.isEmpty {
+            return text
+        }
+        
+        // Try kAXSelectedTextRangeAttribute with kAXValueAttribute
+        var selectedRange: CFTypeRef?
+        let rangeResult = AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &selectedRange)
+        
+        if rangeResult == .success {
+            var fullValue: CFTypeRef?
+            let valueResult = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &fullValue)
             
-            var error: NSDictionary?
-            if let appleScript = NSAppleScript(source: script) {
-                let result = appleScript.executeAndReturnError(&error)
-                
-                DispatchQueue.main.async {
-                    if error == nil, let text = result.stringValue {
-                        completion(text)
-                    } else {
-                        completion(nil)
+            if valueResult == .success, let fullText = fullValue as? String {
+                // Extract the selected portion using the range
+                var range = CFRange()
+                if AXValueGetValue(selectedRange as! AXValue, .cfRange, &range) {
+                    let start = fullText.index(fullText.startIndex, offsetBy: range.location, limitedBy: fullText.endIndex) ?? fullText.startIndex
+                    let end = fullText.index(start, offsetBy: range.length, limitedBy: fullText.endIndex) ?? fullText.endIndex
+                    let selected = String(fullText[start..<end])
+                    if !selected.isEmpty {
+                        return selected
                     }
                 }
-            } else {
-                DispatchQueue.main.async {
-                    completion(nil)
-                }
             }
         }
+        
+        return nil
     }
     
-    /// Copy selected text using CGEvent simulation then read clipboard
+    /// Try to get selected text from the focused window
+    private func getSelectedTextFromWindow(appElement: AXUIElement) -> String? {
+        var focusedWindow: CFTypeRef?
+        let windowResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+        
+        guard windowResult == .success, let window = focusedWindow else {
+            return nil
+        }
+        
+        // Try to find text areas in the window
+        return findSelectedTextInChildren(window as! AXUIElement, depth: 0)
+    }
+    
+    /// Recursively search for selected text in UI element children
+    private func findSelectedTextInChildren(_ element: AXUIElement, depth: Int) -> String? {
+        // Limit recursion depth
+        guard depth < 10 else { return nil }
+        
+        // Check this element
+        if let text = getSelectedTextFromElement(element), !text.isEmpty {
+            return text
+        }
+        
+        // Check children
+        var children: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children)
+        
+        guard result == .success, let childArray = children as? [AXUIElement] else {
+            return nil
+        }
+        
+        for child in childArray {
+            if let text = findSelectedTextInChildren(child, depth: depth + 1) {
+                return text
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Check if there's currently selected text (quick check without getting the text)
+    func hasSelectedText() -> Bool {
+        guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
+            return false
+        }
+        
+        let pid = focusedApp.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
+        
+        var focusedElement: CFTypeRef?
+        let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+        
+        guard focusResult == .success else { return false }
+        
+        var selectedText: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(focusedElement as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedText)
+        
+        if result == .success, let text = selectedText as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Copy selected text using CGEvent simulation then read clipboard (fallback)
     private func copySelectedTextThenRead(completion: @escaping (String?) -> Void) {
         // Store current clipboard content
         let previousContent = getText()

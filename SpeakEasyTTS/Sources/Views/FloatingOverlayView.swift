@@ -9,6 +9,8 @@ struct FloatingOverlayView: View {
     @Environment(AppState.self) private var appState
     @State private var isExpanded = false
     @State private var isHovering = false
+    @State private var hasSelection = false
+    @State private var selectionCheckTimer: Timer?
     
     var body: some View {
         HStack(spacing: 8) {
@@ -23,12 +25,13 @@ struct FloatingOverlayView: View {
         .padding(.vertical, 10)
         .background(
             Capsule()
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+                .fill(hasSelection ? Color.green.opacity(0.3) : Color.clear)
+                .background(.ultraThinMaterial, in: Capsule())
+                .shadow(color: hasSelection ? .green.opacity(0.3) : .black.opacity(0.2), radius: 10, x: 0, y: 5)
         )
         .overlay(
             Capsule()
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                .stroke(hasSelection ? Color.green.opacity(0.5) : Color.white.opacity(0.2), lineWidth: hasSelection ? 2 : 1)
         )
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -36,10 +39,40 @@ struct FloatingOverlayView: View {
             }
         }
         .onTapGesture {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                isExpanded.toggle()
+            // If there's selected text, read it immediately on tap
+            if hasSelection {
+                appState.speakSelectedText()
+            } else {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    isExpanded.toggle()
+                }
             }
         }
+        .onAppear {
+            startSelectionMonitoring()
+        }
+        .onDisappear {
+            stopSelectionMonitoring()
+        }
+    }
+    
+    // MARK: - Selection Monitoring
+    
+    private func startSelectionMonitoring() {
+        // Check for selected text every 0.5 seconds
+        selectionCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            let newHasSelection = appState.clipboardService.hasSelectedText()
+            if newHasSelection != hasSelection {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    hasSelection = newHasSelection
+                }
+            }
+        }
+    }
+    
+    private func stopSelectionMonitoring() {
+        selectionCheckTimer?.invalidate()
+        selectionCheckTimer = nil
     }
     
     // MARK: - Status Indicator
@@ -57,6 +90,11 @@ struct FloatingOverlayView: View {
     }
     
     private var statusColor: Color {
+        // If text is selected, show green (ready to read)
+        if hasSelection && appState.playbackState == .idle {
+            return .green
+        }
+        
         switch appState.playbackState {
         case .playing:
             return .green
@@ -68,6 +106,11 @@ struct FloatingOverlayView: View {
     }
     
     private var statusIcon: String {
+        // If text is selected, show play icon (ready to read)
+        if hasSelection && appState.playbackState == .idle {
+            return "play.fill"
+        }
+        
         switch appState.playbackState {
         case .playing:
             return "speaker.wave.3.fill"

@@ -257,7 +257,15 @@ final class ClipboardService {
     }
     
     /// Check if there's currently selected text (quick check without getting the text)
+    /// Uses multiple methods for better compatibility
     func hasSelectedText() -> Bool {
+        // First check if we have accessibility permissions
+        if !AXIsProcessTrusted() {
+            // Can't check selection without accessibility - return false
+            // The app will prompt user if needed
+            return false
+        }
+        
         guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
             return false
         }
@@ -265,19 +273,51 @@ final class ClipboardService {
         let pid = focusedApp.processIdentifier
         let appElement = AXUIElementCreateApplication(pid)
         
+        // Try to get the focused element
         var focusedElement: CFTypeRef?
         let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
         
-        guard focusResult == .success else { return false }
+        if focusResult == .success, let element = focusedElement {
+            // Check for selected text
+            var selectedText: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(element as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedText)
+            
+            if result == .success, let text = selectedText as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return true
+            }
+            
+            // Try selected text range as fallback
+            var selectedRange: CFTypeRef?
+            let rangeResult = AXUIElementCopyAttributeValue(element as! AXUIElement, kAXSelectedTextRangeAttribute as CFString, &selectedRange)
+            
+            if rangeResult == .success, let range = selectedRange {
+                var cfRange = CFRange()
+                if AXValueGetValue(range as! AXValue, .cfRange, &cfRange) {
+                    return cfRange.length > 0
+                }
+            }
+        }
         
-        var selectedText: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(focusedElement as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedText)
+        // Fallback: Try getting selection from system-wide element
+        let systemWide = AXUIElementCreateSystemWide()
+        var systemFocused: CFTypeRef?
+        let systemResult = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &systemFocused)
         
-        if result == .success, let text = selectedText as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return true
+        if systemResult == .success, let element = systemFocused {
+            var selectedText: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(element as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedText)
+            
+            if result == .success, let text = selectedText as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return true
+            }
         }
         
         return false
+    }
+    
+    /// Check if accessibility permissions are granted
+    func hasAccessibilityPermissions() -> Bool {
+        return AXIsProcessTrusted()
     }
     
     /// Copy selected text using CGEvent simulation then read clipboard (fallback)

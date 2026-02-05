@@ -71,31 +71,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager?.unregisterGlobalHotkey()
     }
     
-    /// Check and request accessibility permissions for global hotkeys
+    /// Check and request accessibility permissions for global hotkeys and text selection
     private func checkAccessibilityPermissions() {
         // Check WITHOUT prompting first
-        let checkOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
-        let alreadyTrusted = AXIsProcessTrustedWithOptions(checkOptions as CFDictionary)
+        let alreadyTrusted = AXIsProcessTrusted()
         
         if alreadyTrusted {
             print("Accessibility permissions already granted")
             return
         }
         
-        // Check if we've already prompted the user this install
-        let defaults = UserDefaults.standard
-        let hasPromptedKey = "com.speakeasy.hasPromptedAccessibility"
-        
-        if defaults.bool(forKey: hasPromptedKey) {
-            // Already prompted before, don't prompt again
-            print("Accessibility permissions needed but already prompted user")
-            return
-        }
-        
-        // First time - prompt the user and remember
+        // Not trusted - show the system prompt
+        // This will open System Preferences to the Accessibility pane
         let promptOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         let _ = AXIsProcessTrustedWithOptions(promptOptions as CFDictionary)
-        defaults.set(true, forKey: hasPromptedKey)
-        print("Accessibility permissions requested")
+        print("Accessibility permissions requested - user needs to enable in System Preferences")
+        
+        // Show an alert explaining why we need permissions
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Accessibility Access Required"
+            alert.informativeText = "SpeakEasy needs Accessibility permissions to detect selected text in other apps.\n\n1. Open System Preferences > Privacy & Security > Accessibility\n2. Find SpeakEasyTTS and enable it\n3. Restart the app"
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "Open System Preferences")
+            alert.addButton(withTitle: "Later")
+            
+            if alert.runModal() == .alertFirstButtonReturn {
+                // Open System Preferences to Accessibility
+                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 }

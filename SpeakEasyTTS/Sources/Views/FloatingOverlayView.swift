@@ -61,10 +61,13 @@ struct FloatingOverlayView: View {
     private func startSelectionMonitoring() {
         // Check for selected text every 0.5 seconds
         selectionCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            let newHasSelection = appState.clipboardService.hasSelectedText()
-            if newHasSelection != hasSelection {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    hasSelection = newHasSelection
+            // Only check if we have accessibility permissions
+            if appState.clipboardService.hasAccessibilityPermissions() {
+                let newHasSelection = appState.clipboardService.hasSelectedText()
+                if newHasSelection != hasSelection {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        hasSelection = newHasSelection
+                    }
                 }
             }
         }

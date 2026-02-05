@@ -141,11 +141,57 @@ final class ClipboardService {
         pasteboard.setString(text, forType: .string)
     }
     
-    /// Copy selected text from the frontmost application
-    /// This simulates Cmd+C to copy selected text
-    func copySelectedText(completion: @escaping (Bool) -> Void) {
+    /// Get selected text from the frontmost application
+    /// Uses multiple methods for maximum compatibility
+    func getSelectedText(completion: @escaping (String?) -> Void) {
+        // Method 1: Try AppleScript first (most reliable for getting selection)
+        getSelectedTextViaAppleScript { [weak self] text in
+            if let text = text, !text.isEmpty {
+                completion(text)
+                return
+            }
+            
+            // Method 2: Fall back to simulating Cmd+C
+            self?.copySelectedTextThenRead(completion: completion)
+        }
+    }
+    
+    /// Use AppleScript to get selected text from System Events
+    private func getSelectedTextViaAppleScript(completion: @escaping (String?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let script = """
+            tell application "System Events"
+                keystroke "c" using {command down}
+                delay 0.1
+            end tell
+            delay 0.1
+            the clipboard as text
+            """
+            
+            var error: NSDictionary?
+            if let appleScript = NSAppleScript(source: script) {
+                let result = appleScript.executeAndReturnError(&error)
+                
+                DispatchQueue.main.async {
+                    if error == nil, let text = result.stringValue {
+                        completion(text)
+                    } else {
+                        completion(nil)
+                    }
+                }
+            } else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+            }
+        }
+    }
+    
+    /// Copy selected text using CGEvent simulation then read clipboard
+    private func copySelectedTextThenRead(completion: @escaping (String?) -> Void) {
         // Store current clipboard content
         let previousContent = getText()
+        let previousChangeCount = pasteboard.changeCount
         
         // Clear clipboard
         pasteboard.clearContents()
@@ -163,17 +209,32 @@ final class ClipboardService {
         keyUp?.flags = .maskCommand
         keyUp?.post(tap: .cghidEventTap)
         
-        // Wait a bit for the copy to complete, then check clipboard
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            if let newContent = self?.getText(), newContent != previousContent {
-                completion(true)
+        // Wait for the copy to complete, then check clipboard
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self = self else {
+                completion(nil)
+                return
+            }
+            
+            // Check if clipboard changed
+            if self.pasteboard.changeCount != previousChangeCount,
+               let newContent = self.getText(),
+               !newContent.isEmpty {
+                completion(newContent)
             } else {
                 // Restore previous content if copy failed
                 if let previous = previousContent {
-                    self?.setText(previous)
+                    self.setText(previous)
                 }
-                completion(false)
+                completion(nil)
             }
+        }
+    }
+    
+    /// Legacy method - simulates copy then calls completion with success/failure
+    func copySelectedText(completion: @escaping (Bool) -> Void) {
+        getSelectedText { text in
+            completion(text != nil)
         }
     }
     

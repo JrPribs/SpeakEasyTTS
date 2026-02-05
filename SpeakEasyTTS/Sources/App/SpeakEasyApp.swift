@@ -73,15 +73,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     /// Check and request accessibility permissions for global hotkeys
     private func checkAccessibilityPermissions() {
-        // First check WITHOUT prompting
+        // Check WITHOUT prompting first
         let checkOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
         let alreadyTrusted = AXIsProcessTrustedWithOptions(checkOptions as CFDictionary)
         
-        if !alreadyTrusted {
-            // Only prompt if not already trusted
-            let promptOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-            let _ = AXIsProcessTrustedWithOptions(promptOptions as CFDictionary)
-            print("Accessibility permissions required for global hotkeys")
+        if alreadyTrusted {
+            print("Accessibility permissions already granted")
+            return
         }
+        
+        // Check if we've already prompted the user this install
+        let defaults = UserDefaults.standard
+        let hasPromptedKey = "com.speakeasy.hasPromptedAccessibility"
+        
+        if defaults.bool(forKey: hasPromptedKey) {
+            // Already prompted before, don't prompt again
+            print("Accessibility permissions needed but already prompted user")
+            return
+        }
+        
+        // First time - prompt the user and remember
+        let promptOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        let _ = AXIsProcessTrustedWithOptions(promptOptions as CFDictionary)
+        defaults.set(true, forKey: hasPromptedKey)
+        print("Accessibility permissions requested")
     }
 }

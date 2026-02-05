@@ -162,14 +162,12 @@ final class AppState {
     
     /// Speak selected text from any application
     func speakSelectedText() {
-        // First, copy selected text to clipboard using Cmd+C
-        clipboardService.copySelectedText { [weak self] success in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                if success, let text = self?.clipboardService.getText() {
-                    self?.speak(text)
-                } else {
-                    self?.errorMessage = "Could not get selected text"
-                }
+        // Get selected text using the improved method
+        clipboardService.getSelectedText { [weak self] text in
+            if let text = text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self?.speak(text)
+            } else {
+                self?.errorMessage = "No text selected. Please select some text first."
             }
         }
     }

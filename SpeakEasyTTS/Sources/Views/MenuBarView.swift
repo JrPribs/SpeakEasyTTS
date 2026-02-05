@@ -1,0 +1,350 @@
+// MenuBarView.swift
+// Main menu bar dropdown interface
+
+import SwiftUI
+
+/// Main menu bar view shown when clicking the status bar icon
+struct MenuBarView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.openSettings) private var openSettings
+    @State private var inputText: String = ""
+    @State private var showingVoicePicker = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header with status
+            headerSection
+            
+            Divider()
+            
+            // Quick text input
+            quickInputSection
+            
+            Divider()
+            
+            // Playback controls (when playing/paused)
+            if appState.playbackState != .idle {
+                playbackSection
+                Divider()
+            }
+            
+            // Voice selection
+            voiceSection
+            
+            Divider()
+            
+            // Speed control
+            speedSection
+            
+            Divider()
+            
+            // Actions
+            actionsSection
+            
+            Divider()
+            
+            // Footer
+            footerSection
+        }
+        .frame(width: 300)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+    
+    // MARK: - Header Section
+    
+    private var headerSection: some View {
+        HStack {
+            Image(systemName: appState.playbackState.systemImage)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("SpeakEasy TTS")
+                    .font(.headline)
+                
+                Text(appState.playbackState.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            if let voice = appState.selectedVoice {
+                Text(voice.name)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding()
+    }
+    
+    // MARK: - Quick Input Section
+    
+    private var quickInputSection: some View {
+        VStack(spacing: 8) {
+            HStack {
+                TextField("Enter text to speak...", text: $inputText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(3...6)
+                    .padding(8)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+                
+                Button {
+                    if !inputText.isEmpty {
+                        appState.speak(inputText)
+                    }
+                } label: {
+                    Image(systemName: "play.fill")
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(inputText.isEmpty)
+            }
+            
+            HStack(spacing: 12) {
+                Button("Read Clipboard") {
+                    appState.speakFromClipboard()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                
+                Button("Read Selection") {
+                    appState.speakSelectedText()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                
+                Spacer()
+                
+                Text("⌘⇧S")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(NSColor.tertiaryLabelColor).opacity(0.2))
+                    .cornerRadius(4)
+            }
+        }
+        .padding()
+    }
+    
+    // MARK: - Playback Section
+    
+    private var playbackSection: some View {
+        VStack(spacing: 8) {
+            // Progress bar
+            if let progress = appState.progress {
+                VStack(spacing: 4) {
+                    ProgressView(value: progress.progress)
+                        .progressViewStyle(.linear)
+                    
+                    HStack {
+                        Text(formatTime(progress.elapsedTime))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        
+                        Spacer()
+                        
+                        if let remaining = progress.estimatedRemainingTime {
+                            Text("-\(formatTime(remaining))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            
+            // Playback controls
+            HStack(spacing: 16) {
+                Spacer()
+                
+                Button {
+                    appState.stop()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .font(.title3)
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    appState.togglePlayPause()
+                } label: {
+                    Image(systemName: appState.playbackState == .playing ? "pause.fill" : "play.fill")
+                        .font(.title2)
+                }
+                .buttonStyle(.borderedProminent)
+                
+                Spacer()
+            }
+            
+            // Current word highlight
+            if let progress = appState.progress, !progress.currentWord.isEmpty {
+                Text("\"\(progress.currentWord)\"")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding()
+    }
+    
+    // MARK: - Voice Section
+    
+    private var voiceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Voice")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                Spacer()
+                
+                Picker("", selection: Binding(
+                    get: { appState.selectedVoice?.id ?? "" },
+                    set: { id in
+                        if let voice = appState.availableVoices.first(where: { $0.id == id }) {
+                            appState.selectVoice(voice)
+                        }
+                    }
+                )) {
+                    ForEach(appState.availableVoices.filter { $0.language.starts(with: "en") }) { voice in
+                        Text(voice.displayName)
+                            .tag(voice.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 180)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+    
+    // MARK: - Speed Section
+    
+    private var speedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Speed")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                Spacer()
+                
+                Text(appState.settings.rateDisplayString)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            
+            Slider(
+                value: Binding(
+                    get: { Double(appState.settings.rate) },
+                    set: { appState.updateRate(Float($0)) }
+                ),
+                in: 0.1...1.0,
+                step: 0.1
+            )
+            
+            HStack {
+                Text("Slower")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Text("Faster")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+    
+    // MARK: - Actions Section
+    
+    private var actionsSection: some View {
+        VStack(spacing: 4) {
+            Button {
+                openInputWindow()
+            } label: {
+                HStack {
+                    Image(systemName: "rectangle.and.pencil.and.ellipsis")
+                    Text("Open Text Input Window")
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+            
+            Button {
+                openSettingsWindow()
+            } label: {
+                HStack {
+                    Image(systemName: "gear")
+                    Text("Settings...")
+                    Spacer()
+                    Text("⌘,")
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+        }
+    }
+    
+    // MARK: - Footer Section
+    
+    private var footerSection: some View {
+        HStack {
+            Text("v1.0.0")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            
+            Spacer()
+            
+            Button("Quit") {
+                NSApplication.shared.terminate(nil)
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", minutes, secs)
+    }
+    
+    private func openInputWindow() {
+        // Use NSApp to open the window
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "input-window" }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            // Open via SwiftUI's openWindow environment action
+            appState.showInputWindow()
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    private func openSettingsWindow() {
+        openSettings()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+#Preview {
+    MenuBarView()
+        .environment(AppState.shared)
+}

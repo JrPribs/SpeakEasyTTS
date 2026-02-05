@@ -1,0 +1,82 @@
+// SpeakEasyApp.swift
+// SpeakEasyTTS - A lightweight macOS menu bar text-to-speech app
+//
+// Created for demonstration purposes
+// License: MIT
+
+import SwiftUI
+import AVFoundation
+
+/// Main application entry point
+/// Uses SwiftUI's App protocol with menu bar extra for status bar integration
+@main
+struct SpeakEasyApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @State private var appState = AppState.shared
+    
+    var body: some Scene {
+        // Menu Bar Extra - the main interface
+        MenuBarExtra {
+            MenuBarView()
+                .environment(appState)
+        } label: {
+            Image(systemName: appState.playbackState == .playing ? "speaker.wave.3.fill" : "speaker.wave.2")
+                .symbolRenderingMode(.hierarchical)
+        }
+        .menuBarExtraStyle(.window)
+        
+        // Settings Window
+        Settings {
+            SettingsView()
+                .environment(appState)
+        }
+        
+        // Floating Input Window (opened via menu or hotkey)
+        Window("Text Input", id: "input-window") {
+            InputWindowView()
+                .environment(appState)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+    }
+}
+
+/// AppDelegate handles application lifecycle and global hotkey registration
+class AppDelegate: NSObject, NSApplicationDelegate {
+    private var hotkeyManager: HotkeyManager?
+    
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Initialize hotkey manager for global shortcuts
+        hotkeyManager = HotkeyManager.shared
+        hotkeyManager?.registerGlobalHotkey()
+        
+        // Request accessibility permissions if needed
+        checkAccessibilityPermissions()
+        
+        // Hide dock icon (menu bar app only)
+        NSApp.setActivationPolicy(.accessory)
+        
+        print("SpeakEasyTTS launched successfully")
+    }
+    
+    func applicationWillTerminate(_ notification: Notification) {
+        // Clean up speech synthesis
+        AppState.shared.speechService.stop()
+        hotkeyManager?.unregisterGlobalHotkey()
+    }
+    
+    /// Check and request accessibility permissions for global hotkeys
+    private func checkAccessibilityPermissions() {
+        // First check WITHOUT prompting
+        let checkOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
+        let alreadyTrusted = AXIsProcessTrustedWithOptions(checkOptions as CFDictionary)
+        
+        if !alreadyTrusted {
+            // Only prompt if not already trusted
+            let promptOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            let _ = AXIsProcessTrustedWithOptions(promptOptions as CFDictionary)
+            print("Accessibility permissions required for global hotkeys")
+        }
+    }
+}

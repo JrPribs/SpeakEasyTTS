@@ -1,0 +1,67 @@
+{
+  "": {
+    "dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeakEasyTTS.d",
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeakEasyTTS.o",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/master.swiftdeps"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/App/SpeakEasyApp.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeakEasyApp.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeakEasyApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeakEasyApp.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeakEasyApp.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Core/AppState.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/AppState.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/AppState~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/AppState.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/AppState.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Core/EdgeTTSService.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/EdgeTTSService.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/EdgeTTSService~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/EdgeTTSService.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/EdgeTTSService.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Core/HotkeyManager.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/HotkeyManager.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/HotkeyManager~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/HotkeyManager.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/HotkeyManager.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Core/SpeechService.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeechService.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeechService~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeechService.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SpeechService.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Models/Models.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Models.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Models.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Models.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Services/Services.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Services.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Services~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Services.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/Services.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/InputWindowView.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/InputWindowView.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/InputWindowView~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/InputWindowView.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/InputWindowView.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/MenuBarView.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/MenuBarView.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/MenuBarView~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/MenuBarView.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/MenuBarView.dia"
+  },
+  "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/Sources/Views/SettingsView.swift": {
+    "object": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SettingsView.swift.o",
+    "swiftmodule": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SettingsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SettingsView.swiftdeps",
+    "diagnostics": "/Users/jrpribs/Projects/SpeakEasyTTS/SpeakEasyTTS/.build/x86_64-apple-macosx/release/SpeakEasyTTS.build/SettingsView.dia"
+  }
+}

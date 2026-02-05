@@ -1,0 +1,85 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4A90D9', 'primaryTextColor': '#fff', 'primaryBorderColor': '#2E5A8B', 'lineColor': '#5D6D7E', 'secondaryColor': '#82E0AA', 'tertiaryColor': '#F9E79F'}}}%%
+
+flowchart TB
+    subgraph UserInteraction["User Interaction Layer"]
+        MenuBar["🔊 Menu Bar Icon"]
+        Hotkey["⌨️ Global Hotkey<br/>Cmd+Shift+S"]
+        FloatingWindow["📝 Floating Window<br/>Manual Text Input"]
+    end
+
+    subgraph AppCore["Application Core"]
+        AppDelegate["AppDelegate<br/>App Lifecycle"]
+        AppState["AppState<br/>@Observable"]
+        HotkeyManager["HotkeyManager<br/>Carbon/CGEvent"]
+    end
+
+    subgraph SpeechEngine["Speech Engine Layer"]
+        SpeechService["SpeechService<br/>Protocol"]
+        NativeTTS["NativeTTS<br/>AVSpeechSynthesizer"]
+        EdgeTTS["EdgeTTS<br/>node-edge-tts"]
+    end
+
+    subgraph DataLayer["Data & Settings"]
+        SettingsStore["SettingsStore<br/>UserDefaults"]
+        VoiceManager["VoiceManager<br/>Voice Discovery"]
+        ClipboardService["ClipboardService<br/>NSPasteboard"]
+    end
+
+    subgraph Models["Models"]
+        Voice["Voice"]
+        SpeechSettings["SpeechSettings"]
+        PlaybackState["PlaybackState"]
+    end
+
+    subgraph Views["SwiftUI Views"]
+        MenuBarView["MenuBarView"]
+        InputView["InputView"]
+        SettingsView["SettingsView"]
+        PlaybackControls["PlaybackControls"]
+    end
+
+    %% User Interaction Connections
+    MenuBar --> MenuBarView
+    Hotkey --> HotkeyManager
+    FloatingWindow --> InputView
+
+    %% App Core Connections
+    AppDelegate --> AppState
+    HotkeyManager --> AppState
+    AppState --> SpeechService
+
+    %% Speech Engine Connections
+    SpeechService --> NativeTTS
+    SpeechService --> EdgeTTS
+    NativeTTS --> PlaybackState
+    EdgeTTS --> PlaybackState
+
+    %% Data Layer Connections
+    SettingsStore --> SpeechSettings
+    VoiceManager --> Voice
+    ClipboardService --> AppState
+
+    %% View Connections
+    MenuBarView --> PlaybackControls
+    InputView --> AppState
+    SettingsView --> SettingsStore
+    PlaybackControls --> AppState
+
+    %% Model Usage
+    AppState --> PlaybackState
+    AppState --> SpeechSettings
+    AppState --> Voice
+
+    classDef userLayer fill:#4A90D9,stroke:#2E5A8B,color:#fff
+    classDef coreLayer fill:#82E0AA,stroke:#27AE60,color:#000
+    classDef engineLayer fill:#F9E79F,stroke:#F4D03F,color:#000
+    classDef dataLayer fill:#D7BDE2,stroke:#8E44AD,color:#000
+    classDef modelLayer fill:#FAD7A0,stroke:#E67E22,color:#000
+    classDef viewLayer fill:#AED6F1,stroke:#3498DB,color:#000
+
+    class MenuBar,Hotkey,FloatingWindow userLayer
+    class AppDelegate,AppState,HotkeyManager coreLayer
+    class SpeechService,NativeTTS,EdgeTTS engineLayer
+    class SettingsStore,VoiceManager,ClipboardService dataLayer
+    class Voice,SpeechSettings,PlaybackState modelLayer
+    class MenuBarView,InputView,SettingsView,PlaybackControls viewLayer

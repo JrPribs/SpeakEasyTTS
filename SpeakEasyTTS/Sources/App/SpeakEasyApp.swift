@@ -77,30 +77,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let alreadyTrusted = AXIsProcessTrusted()
         
         if alreadyTrusted {
-            print("Accessibility permissions already granted")
+            print("✅ Accessibility permissions already granted")
             return
         }
         
-        // Not trusted - show the system prompt
-        // This will open System Preferences to the Accessibility pane
+        print("⚠️ Accessibility NOT trusted - will prompt user")
+        
+        // Show the system accessibility prompt
+        // This opens System Preferences automatically
         let promptOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         let _ = AXIsProcessTrustedWithOptions(promptOptions as CFDictionary)
-        print("Accessibility permissions requested - user needs to enable in System Preferences")
         
-        // Show an alert explaining why we need permissions
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.messageText = "Accessibility Access Required"
-            alert.informativeText = "SpeakEasy needs Accessibility permissions to detect selected text in other apps.\n\n1. Open System Preferences > Privacy & Security > Accessibility\n2. Find SpeakEasyTTS and enable it\n3. Restart the app"
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "Open System Preferences")
-            alert.addButton(withTitle: "Later")
-            
-            if alert.runModal() == .alertFirstButtonReturn {
-                // Open System Preferences to Accessibility
-                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-                NSWorkspace.shared.open(url)
-            }
-        }
+        // Note: We removed the redundant NSAlert - the system prompt is sufficient
+        // The system prompt already explains what's needed and opens System Preferences
     }
 }

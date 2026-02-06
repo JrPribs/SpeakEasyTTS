@@ -22,6 +22,10 @@ final class AppState {
     var errorMessage: String?
     var isInputWindowVisible: Bool = false
     
+    // MARK: - Accessibility Permissions
+    var hasAccessibilityPermissions: Bool = false
+    private var permissionCheckTimer: Timer?
+    
     // MARK: - Services
     var speechService: SpeechService
     private var nativeSpeechService: NativeSpeechService
@@ -73,6 +77,67 @@ final class AppState {
             // Default to first English voice
             selectedVoice = availableVoices.first { $0.language.starts(with: "en") }
         }
+        
+        // Start accessibility permission monitoring
+        startAccessibilityPermissionMonitoring()
+    }
+    
+    // MARK: - Accessibility Permission Management
+    
+    /// Start monitoring for accessibility permissions
+    func startAccessibilityPermissionMonitoring() {
+        // Check immediately
+        checkAccessibilityPermissions()
+        
+        // Only start polling if not already granted
+        if !hasAccessibilityPermissions {
+            permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                self?.checkAccessibilityPermissions()
+            }
+        }
+    }
+    
+    /// Check current accessibility permission status
+    func checkAccessibilityPermissions() {
+        let granted = AXIsProcessTrusted()
+        
+        if granted != hasAccessibilityPermissions {
+            hasAccessibilityPermissions = granted
+            print("🔐 Accessibility permissions: \(granted ? "GRANTED ✅" : "NOT GRANTED ❌")")
+            
+            // Stop polling once permissions are granted
+            if granted {
+                permissionCheckTimer?.invalidate()
+                permissionCheckTimer = nil
+            }
+        }
+    }
+    
+    /// Request accessibility permissions (opens System Preferences)
+    func requestAccessibilityPermissions() {
+        let promptOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        let _ = AXIsProcessTrustedWithOptions(promptOptions as CFDictionary)
+    }
+    
+    /// Open System Preferences to Accessibility settings
+    func openAccessibilitySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    // MARK: - Auto-Read Settings
+    
+    /// Update auto-read on selection setting
+    func updateAutoReadOnSelection(_ enabled: Bool) {
+        settings.autoReadOnSelection = enabled
+        saveSettings()
+    }
+    
+    /// Update auto-read delay
+    func updateAutoReadDelay(_ delay: Double) {
+        settings.autoReadDelay = delay
+        saveSettings()
     }
     
     // MARK: - Voice Management

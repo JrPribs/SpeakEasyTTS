@@ -16,9 +16,9 @@ final class HotkeyManager {
     private var hotkeyRef: EventHotKeyRef?
     private var hotkeyID = EventHotKeyID()
     
-    // Hotkey configuration
+    // Hotkey configuration - Option+S (⌥S)
     private let defaultKeyCode: UInt32 = 1  // 'S' key
-    private let defaultModifiers: UInt32 = UInt32(cmdKey | shiftKey)
+    private let defaultModifiers: UInt32 = UInt32(optionKey)
     
     // Callback for when hotkey is pressed
     var onHotkeyPressed: (() -> Void)?
@@ -101,7 +101,7 @@ final class HotkeyManager {
         )
         
         if registerStatus == noErr {
-            print("HotkeyManager: Global hotkey registered (Cmd+Shift+S)")
+            print("HotkeyManager: Global hotkey registered (Option+S / ⌥S)")
         } else {
             print("HotkeyManager: Failed to register hotkey: \(registerStatus)")
         }
@@ -174,12 +174,12 @@ final class NSEventHotkeyManager {
     
     /// Handle key event
     private func handleKeyEvent(_ event: NSEvent) {
-        // Check for Cmd+Shift+S
+        // Check for Option+S (⌥S)
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isCommandShift = modifiers.contains([.command, .shift])
+        let isOptionOnly = modifiers == .option
         let isKeyS = event.keyCode == 1 // 'S' key
         
-        if isCommandShift && isKeyS {
+        if isOptionOnly && isKeyS {
             DispatchQueue.main.async {
                 AppState.shared.speakSelectedText()
             }

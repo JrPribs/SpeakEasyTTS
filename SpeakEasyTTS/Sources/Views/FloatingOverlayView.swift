@@ -11,6 +11,10 @@ struct FloatingOverlayView: View {
     @State private var isHovering = false
     @State private var hasSelection = false
     @State private var selectionCheckTimer: Timer?
+    @State private var autoReadDebounceTask: Task<Void, Never>?
+    @State private var lastSelectedText: String = ""
+    @State private var isAutoReading = false
+    @State private var pulseAnimation = false
     
     var body: some View {
         HStack(spacing: 8) {
@@ -25,28 +29,22 @@ struct FloatingOverlayView: View {
         .padding(.vertical, 10)
         .background(
             Capsule()
-                .fill(hasSelection ? Color.green.opacity(0.3) : Color.clear)
+                .fill(backgroundFillColor)
                 .background(.ultraThinMaterial, in: Capsule())
-                .shadow(color: hasSelection ? .green.opacity(0.3) : .black.opacity(0.2), radius: 10, x: 0, y: 5)
+                .shadow(color: shadowColor, radius: 10, x: 0, y: 5)
         )
         .overlay(
             Capsule()
-                .stroke(hasSelection ? Color.green.opacity(0.5) : Color.white.opacity(0.2), lineWidth: hasSelection ? 2 : 1)
+                .stroke(strokeColor, lineWidth: hasSelection || isAutoReading ? 2 : 1)
         )
+        .scaleEffect(pulseAnimation ? 1.05 : 1.0)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.2)) {
                 isHovering = hovering
             }
         }
         .onTapGesture {
-            // If there's selected text, read it immediately on tap
-            if hasSelection {
-                appState.speakSelectedText()
-            } else {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isExpanded.toggle()
-                }
-            }
+            handleTap()
         }
         .onAppear {
             startSelectionMonitoring()
@@ -56,17 +54,90 @@ struct FloatingOverlayView: View {
         }
     }
     
+    // MARK: - Background Colors
+    
+    private var backgroundFillColor: Color {
+        if !appState.hasAccessibilityPermissions {
+            return Color.orange.opacity(0.2)
+        }
+        if isAutoReading {
+            return Color.purple.opacity(0.3)
+        }
+        if hasSelection {
+            return Color.green.opacity(0.3)
+        }
+        return Color.clear
+    }
+    
+    private var shadowColor: Color {
+        if !appState.hasAccessibilityPermissions {
+            return .orange.opacity(0.3)
+        }
+        if isAutoReading {
+            return .purple.opacity(0.4)
+        }
+        if hasSelection {
+            return .green.opacity(0.3)
+        }
+        return .black.opacity(0.2)
+    }
+    
+    private var strokeColor: Color {
+        if !appState.hasAccessibilityPermissions {
+            return Color.orange.opacity(0.6)
+        }
+        if isAutoReading {
+            return Color.purple.opacity(0.6)
+        }
+        if hasSelection {
+            return Color.green.opacity(0.5)
+        }
+        return Color.white.opacity(0.2)
+    }
+    
+    // MARK: - Tap Handler
+    
+    private func handleTap() {
+        // If no accessibility permissions, open settings
+        if !appState.hasAccessibilityPermissions {
+            appState.openAccessibilitySettings()
+            return
+        }
+        
+        // If there's selected text, read it immediately on tap
+        if hasSelection {
+            appState.speakSelectedText()
+        } else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isExpanded.toggle()
+            }
+        }
+    }
+    
     // MARK: - Selection Monitoring
     
     private func startSelectionMonitoring() {
+        // Log initial accessibility status
+        print("🔍 Starting selection monitoring. Accessibility granted: \(appState.hasAccessibilityPermissions)")
+        
         // Check for selected text every 0.5 seconds
-        selectionCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+        selectionCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak appState] _ in
+            guard let appState = appState else { return }
+            
             // Only check if we have accessibility permissions
-            if appState.clipboardService.hasAccessibilityPermissions() {
+            if appState.hasAccessibilityPermissions {
                 let newHasSelection = appState.clipboardService.hasSelectedText()
                 if newHasSelection != hasSelection {
+                    print("📝 Selection state changed: \(newHasSelection)")
                     withAnimation(.easeInOut(duration: 0.2)) {
                         hasSelection = newHasSelection
+                    }
+                    
+                    // Handle auto-read on selection
+                    if newHasSelection && appState.settings.autoReadOnSelection {
+                        triggerAutoRead()
+                    } else if !newHasSelection {
+                        cancelAutoRead()
                     }
                 }
             }
@@ -76,6 +147,67 @@ struct FloatingOverlayView: View {
     private func stopSelectionMonitoring() {
         selectionCheckTimer?.invalidate()
         selectionCheckTimer = nil
+        cancelAutoRead()
+    }
+    
+    // MARK: - Auto-Read Logic
+    
+    private func triggerAutoRead() {
+        // Cancel any existing debounce task
+        autoReadDebounceTask?.cancel()
+        
+        let delay = appState.settings.autoReadDelay
+        
+        autoReadDebounceTask = Task { @MainActor in
+            do {
+                // Wait for debounce delay
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                
+                // Check if task was cancelled
+                if Task.isCancelled { return }
+                
+                // Check if still has selection and auto-read is enabled
+                guard hasSelection && appState.settings.autoReadOnSelection else { return }
+                
+                // Don't auto-read if already playing
+                guard appState.playbackState == .idle else { return }
+                
+                // Show auto-reading indicator with pulse animation
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isAutoReading = true
+                }
+                
+                // Pulse animation
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    pulseAnimation = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        pulseAnimation = false
+                    }
+                }
+                
+                print("🎙️ Auto-reading selected text...")
+                appState.speakSelectedText()
+                
+                // Reset auto-reading indicator after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isAutoReading = false
+                    }
+                }
+            } catch {
+                // Task was cancelled
+            }
+        }
+    }
+    
+    private func cancelAutoRead() {
+        autoReadDebounceTask?.cancel()
+        autoReadDebounceTask = nil
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isAutoReading = false
+        }
     }
     
     // MARK: - Status Indicator
@@ -90,9 +222,27 @@ struct FloatingOverlayView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
         }
+        .overlay(
+            // Pulse ring when ready to read
+            Circle()
+                .stroke(hasSelection && appState.playbackState == .idle ? Color.green : Color.clear, lineWidth: 2)
+                .frame(width: 38, height: 38)
+                .opacity(pulseAnimation ? 0.8 : 0)
+                .scaleEffect(pulseAnimation ? 1.2 : 1.0)
+        )
     }
     
     private var statusColor: Color {
+        // No accessibility permissions - show warning
+        if !appState.hasAccessibilityPermissions {
+            return .orange
+        }
+        
+        // Auto-reading state
+        if isAutoReading {
+            return .purple
+        }
+        
         // If text is selected, show green (ready to read)
         if hasSelection && appState.playbackState == .idle {
             return .green
@@ -109,6 +259,16 @@ struct FloatingOverlayView: View {
     }
     
     private var statusIcon: String {
+        // No accessibility permissions - show lock
+        if !appState.hasAccessibilityPermissions {
+            return "lock.fill"
+        }
+        
+        // Auto-reading indicator
+        if isAutoReading {
+            return "waveform"
+        }
+        
         // If text is selected, show play icon (ready to read)
         if hasSelection && appState.playbackState == .idle {
             return "play.fill"

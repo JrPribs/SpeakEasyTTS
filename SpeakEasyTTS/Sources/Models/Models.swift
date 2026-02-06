@@ -96,6 +96,8 @@ struct SpeechSettings: Codable, Equatable {
     var pitch: Float
     var volume: Float
     var ttsEngine: TTSEngine
+    var autoReadOnSelection: Bool
+    var autoReadDelay: Double
     
     /// TTS engine selection
     enum TTSEngine: String, Codable, CaseIterable {
@@ -118,7 +120,9 @@ struct SpeechSettings: Codable, Equatable {
         rate: 0.5,      // AVSpeechUtteranceDefaultSpeechRate
         pitch: 1.0,     // Normal pitch
         volume: 1.0,    // Full volume
-        ttsEngine: .edgeTTS  // Default to Edge TTS for better quality
+        ttsEngine: .edgeTTS,  // Default to Edge TTS for better quality
+        autoReadOnSelection: false,  // Disabled by default
+        autoReadDelay: 0.8  // 0.8 second debounce delay
     )
     
     /// Rate as words per minute (approximate)

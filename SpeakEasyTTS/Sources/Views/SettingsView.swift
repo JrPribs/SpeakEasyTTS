@@ -25,6 +25,7 @@ struct SettingsView: View {
             
             // Shortcuts
             ShortcutsTab()
+                .environment(appState)
                 .tabItem {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
@@ -67,6 +68,37 @@ struct GeneralSettingsTab: View {
                 .pickerStyle(.radioGroup)
                 
                 Text(appState.settings.ttsEngine.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Section("Auto-Read") {
+                Toggle("Auto-read selected text", isOn: Binding(
+                    get: { appState.settings.autoReadOnSelection },
+                    set: { appState.updateAutoReadOnSelection($0) }
+                ))
+                
+                if appState.settings.autoReadOnSelection {
+                    HStack {
+                        Text("Delay before reading")
+                        Spacer()
+                        Slider(
+                            value: Binding(
+                                get: { appState.settings.autoReadDelay },
+                                set: { appState.updateAutoReadDelay($0) }
+                            ),
+                            in: 0.3...2.0,
+                            step: 0.1
+                        )
+                        .frame(width: 150)
+                        
+                        Text(String(format: "%.1fs", appState.settings.autoReadDelay))
+                            .frame(width: 40)
+                            .monospacedDigit()
+                    }
+                }
+                
+                Text("When enabled, text will automatically be read aloud after selection.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -280,25 +312,27 @@ struct VoiceRow: View {
 // MARK: - Shortcuts Tab
 
 struct ShortcutsTab: View {
+    @Environment(AppState.self) private var appState
+    
     var body: some View {
         Form {
             Section("Global Shortcuts") {
                 HStack {
                     Text("Read Selected Text")
                     Spacer()
-                    KeyboardShortcutView(shortcut: "⌘⇧S")
+                    KeyboardShortcutView(shortcut: "⌥S")
                 }
                 
                 HStack {
                     Text("Read Clipboard")
                     Spacer()
-                    KeyboardShortcutView(shortcut: "⌘⇧V")
+                    KeyboardShortcutView(shortcut: "⌥V")
                 }
                 
                 HStack {
                     Text("Open Input Window")
                     Spacer()
-                    KeyboardShortcutView(shortcut: "⌘⇧T")
+                    KeyboardShortcutView(shortcut: "⌥T")
                 }
             }
             
@@ -316,15 +350,25 @@ struct ShortcutsTab: View {
                 }
             }
             
-            Section {
-                Text("Global shortcuts require Accessibility permissions. Grant access in System Settings > Privacy & Security > Accessibility.")
+            Section("Accessibility") {
+                HStack {
+                    Text("Status")
+                    Spacer()
+                    if appState.hasAccessibilityPermissions {
+                        Label("Granted", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Label("Not Granted", systemImage: "xmark.circle.fill")
+                            .foregroundStyle(.red)
+                    }
+                }
+                
+                Text("Global shortcuts and text selection detection require Accessibility permissions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 
                 Button("Open Accessibility Settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    appState.openAccessibilitySettings()
                 }
             }
         }
@@ -378,9 +422,10 @@ struct AboutTab: View {
                     .font(.headline)
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    FeatureRow(icon: "keyboard", text: "Global hotkey (⌘⇧S)")
+                    FeatureRow(icon: "keyboard", text: "Global hotkey (⌥S)")
                     FeatureRow(icon: "doc.on.clipboard", text: "Read from clipboard")
                     FeatureRow(icon: "text.cursor", text: "Read selected text")
+                    FeatureRow(icon: "waveform", text: "Auto-read on selection")
                     FeatureRow(icon: "person.wave.2", text: "Multiple voice options")
                     FeatureRow(icon: "speedometer", text: "Adjustable speed")
                 }

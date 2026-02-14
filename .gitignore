@@ -1,0 +1,13 @@
+# Build artifacts
+SpeakEasyTTS/.build/
+SpeakEasyTTS/build/
+.build/
+build/
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store

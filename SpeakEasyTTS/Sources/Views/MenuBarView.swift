@@ -359,7 +359,7 @@ struct MenuBarView: View {
     }
 }
 
-#if DEBUG
+#if canImport(PreviewsMacros)
 #Preview {
     MenuBarView()
         .environment(AppState.shared)

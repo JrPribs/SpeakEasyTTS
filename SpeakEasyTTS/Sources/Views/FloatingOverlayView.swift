@@ -496,7 +496,7 @@ private struct OverlayVisualEffectView: NSViewRepresentable {
     }
 }
 
-#if DEBUG
+#if canImport(PreviewsMacros)
 #Preview {
     FloatingOverlayView()
         .environment(AppState.shared)

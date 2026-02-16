@@ -18,6 +18,23 @@ echo "🔨 Building $APP_NAME..."
 rm -rf "$BUILD_DIR"
 mkdir -p "$RELEASE_DIR"
 
+# Workaround for broken CLT linker installs where /usr/bin/ld is empty.
+# SwiftPM manifest compilation uses swiftc directly, so we inject SWIFT_EXEC
+# with a wrapper that forces ld-classic.
+CLT_LD="/Library/Developer/CommandLineTools/usr/bin/ld"
+CLT_LD_CLASSIC="/Library/Developer/CommandLineTools/usr/bin/ld-classic"
+if [ -f "$CLT_LD" ] && [ ! -s "$CLT_LD" ] && [ -x "$CLT_LD_CLASSIC" ]; then
+    echo "⚠️  Detected empty CLT linker at $CLT_LD"
+    echo "   Using ld-classic via SWIFT_EXEC wrapper for this build."
+    SWIFTC_WRAPPER="$BUILD_DIR/swiftc-wrapper.sh"
+    cat > "$SWIFTC_WRAPPER" << EOF
+#!/bin/bash
+exec /Library/Developer/CommandLineTools/usr/bin/swiftc -use-ld=/Library/Developer/CommandLineTools/usr/bin/ld-classic "\$@"
+EOF
+    chmod +x "$SWIFTC_WRAPPER"
+    export SWIFT_EXEC="$PWD/$SWIFTC_WRAPPER"
+fi
+
 # Build the executable
 echo "📦 Compiling Swift package..."
 swift build -c release

@@ -285,7 +285,9 @@ struct VisualEffectView: NSViewRepresentable {
     }
 }
 
+#if canImport(PreviewsMacros)
 #Preview {
     InputWindowView()
         .environment(AppState.shared)
 }
+#endif

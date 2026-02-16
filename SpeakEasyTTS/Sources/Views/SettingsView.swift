@@ -456,7 +456,9 @@ struct FeatureRow: View {
     }
 }
 
+#if canImport(PreviewsMacros)
 #Preview {
     SettingsView()
         .environment(AppState.shared)
 }
+#endif

@@ -7,6 +7,7 @@ import SwiftUI
 struct MenuBarView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openSettings) private var openSettings
+    @ObservedObject private var overlayController = FloatingOverlayController.shared
     @State private var inputText: String = ""
     @State private var showingVoicePicker = false
     
@@ -118,7 +119,7 @@ struct MenuBarView: View {
                 
                 Spacer()
                 
-                Text("⌘⇧S")
+                Text("⌥S")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
@@ -281,11 +282,11 @@ struct MenuBarView: View {
             .padding(.vertical, 6)
             
             Button {
-                FloatingOverlayController.shared.toggle()
+                overlayController.toggle()
             } label: {
                 HStack {
-                    Image(systemName: "pip")
-                    Text("Toggle Floating Widget")
+                    Image(systemName: overlayController.isVisible ? "pip.fill" : "pip")
+                    Text(overlayController.isVisible ? "Hide Floating Widget" : "Show Floating Widget")
                     Spacer()
                 }
                 .contentShape(Rectangle())
@@ -358,7 +359,9 @@ struct MenuBarView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     MenuBarView()
         .environment(AppState.shared)
 }
+#endif

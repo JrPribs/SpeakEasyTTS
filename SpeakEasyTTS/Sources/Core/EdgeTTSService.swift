@@ -11,6 +11,7 @@ final class EdgeTTSService: SpeechService {
     // MARK: - Properties
     
     private var audioPlayer: AVAudioPlayer?
+    private var audioPlayerDelegate: AudioPlayerDelegate?
     private var currentProcess: Process?
     private var tempDirectory: URL
     
@@ -99,6 +100,7 @@ final class EdgeTTSService: SpeechService {
         currentProcess = nil
         audioPlayer?.stop()
         audioPlayer = nil
+        audioPlayerDelegate = nil
         currentState = .idle
         onStateChange?(.idle)
     }
@@ -160,13 +162,16 @@ final class EdgeTTSService: SpeechService {
     private func playAudioFile(_ url: URL) {
         do {
             audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.delegate = AudioPlayerDelegate { [weak self] in
+            let delegate = AudioPlayerDelegate { [weak self] in
                 self?.currentState = .idle
                 self?.onStateChange?(.idle)
+                self?.audioPlayerDelegate = nil
                 
                 // Clean up temp file
                 try? FileManager.default.removeItem(at: url)
             }
+            audioPlayerDelegate = delegate
+            audioPlayer?.delegate = delegate
             audioPlayer?.play()
         } catch {
             onError?(error)

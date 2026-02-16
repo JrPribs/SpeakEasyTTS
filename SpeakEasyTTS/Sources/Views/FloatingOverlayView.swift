@@ -7,197 +7,247 @@ import AppKit
 /// Floating pill-shaped overlay that stays on top of all windows
 struct FloatingOverlayView: View {
     @Environment(AppState.self) private var appState
-    @State private var isExpanded = false
+    @Environment(\.floatingOverlay) private var floatingOverlay
+    
+    @State private var isPinnedExpanded = false
     @State private var isHovering = false
-    @State private var hasSelection = false
-    @State private var selectionCheckTimer: Timer?
-    @State private var autoReadDebounceTask: Task<Void, Never>?
-    @State private var lastSelectedText: String = ""
+    @State private var isDragging = false
     @State private var isAutoReading = false
-    @State private var pulseAnimation = false
+    @State private var pulseSelection = false
+    @State private var autoReadDebounceTask: Task<Void, Never>?
+    @State private var lastAutoReadSignature: String = ""
+    @State private var lastAutoReadAt: Date = .distantPast
+    @State private var sheenOffset: CGFloat = -260
+    
+    private let collapsedWidth: CGFloat = 50
+    private let expandedWidth: CGFloat = 266
+    
+    private var hasSelection: Bool {
+        appState.hasSelectedText
+    }
+    
+    private var shouldExpand: Bool {
+        isPinnedExpanded || isHovering
+    }
+    
+    private var controlsVisible: Bool {
+        shouldExpand && !isDragging
+    }
+    
+    private var isActiveState: Bool {
+        hasSelection || isAutoReading || appState.playbackState != .idle
+    }
     
     var body: some View {
-        HStack(spacing: 8) {
-            // Speaker icon / status indicator
-            statusIndicator
+        HStack(spacing: 10) {
+            statusButton
             
-            if isExpanded || isHovering {
+            if controlsVisible {
                 expandedControls
+                    .transition(.opacity.combined(with: .move(edge: .leading)))
             }
         }
-        .padding(.horizontal, isExpanded || isHovering ? 16 : 12)
-        .padding(.vertical, 10)
-        .background(
-            Capsule()
-                .fill(backgroundFillColor)
-                .background(.ultraThinMaterial, in: Capsule())
-                .shadow(color: shadowColor, radius: 10, x: 0, y: 5)
-        )
-        .overlay(
-            Capsule()
-                .stroke(strokeColor, lineWidth: hasSelection || isAutoReading ? 2 : 1)
-        )
-        .scaleEffect(pulseAnimation ? 1.05 : 1.0)
+        .padding(.horizontal, shouldExpand ? 12 : 8)
+        .padding(.vertical, 8)
+        .frame(width: shouldExpand ? expandedWidth : collapsedWidth, alignment: .leading)
+        .background(glassBackground)
+        .overlay(glassEdges)
+        .overlay(specularHighlight)
+        .contentShape(Capsule())
+        .opacity(shellOpacity)
+        .scaleEffect(isHovering && !isDragging ? 1.013 : 1.0)
+        .animation(.spring(response: 0.24, dampingFraction: 0.84), value: shouldExpand)
+        .animation(.easeInOut(duration: 0.16), value: isHovering)
+        .animation(.easeInOut(duration: 0.18), value: appState.playbackState)
+        .animation(.easeInOut(duration: 0.18), value: hasSelection)
+        .onAppear {
+            floatingOverlay.updateSize(width: shouldExpand ? expandedWidth : collapsedWidth)
+            startSheenAnimation()
+        }
+        .onChange(of: shouldExpand) { _, expanded in
+            floatingOverlay.updateSize(width: expanded ? expandedWidth : collapsedWidth)
+        }
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.2)) {
+            guard !isDragging else { return }
+            withAnimation(.easeInOut(duration: 0.16)) {
                 isHovering = hovering
             }
         }
-        .onTapGesture {
-            handleTap()
-        }
-        .onAppear {
-            startSelectionMonitoring()
+        .onChange(of: appState.hasSelectedText) { _, newValue in
+            if newValue && appState.settings.autoReadOnSelection {
+                triggerAutoRead()
+            } else if !newValue {
+                cancelAutoRead()
+            }
         }
         .onDisappear {
-            stopSelectionMonitoring()
+            cancelAutoRead()
+            floatingOverlay.endDrag()
+        }
+        .simultaneousGesture(dragGesture)
+    }
+    
+    private var glassBackground: some View {
+        ZStack {
+            OverlayVisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+            
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.24),
+                    Color.white.opacity(0.06),
+                    Color.black.opacity(0.15)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            
+            RadialGradient(
+                colors: [
+                    statusColor.opacity(0.22),
+                    Color.clear
+                ],
+                center: .leading,
+                startRadius: 10,
+                endRadius: shouldExpand ? 220 : 110
+            )
+            .opacity(isActiveState ? 1.0 : 0.6)
+        }
+        .clipShape(Capsule())
+        .shadow(color: statusColor.opacity(isActiveState ? 0.22 : 0.12), radius: 13, x: 0, y: 8)
+        .shadow(color: .black.opacity(0.16), radius: 20, x: 0, y: 10)
+    }
+    
+    private var glassEdges: some View {
+        ZStack {
+            Capsule()
+                .strokeBorder(Color.white.opacity(shouldExpand ? 0.55 : 0.42), lineWidth: 0.9)
+            
+            Capsule()
+                .strokeBorder(statusColor.opacity(isActiveState ? 0.35 : 0.16), lineWidth: 1.0)
+            
+            Capsule()
+                .strokeBorder(Color.black.opacity(0.2), lineWidth: 0.8)
+                .padding(0.9)
         }
     }
     
-    // MARK: - Background Colors
-    
-    private var backgroundFillColor: Color {
-        if !appState.hasAccessibilityPermissions {
-            return Color.orange.opacity(0.2)
-        }
-        if isAutoReading {
-            return Color.purple.opacity(0.3)
-        }
-        if hasSelection {
-            return Color.green.opacity(0.3)
-        }
-        return Color.clear
+    private var specularHighlight: some View {
+        Capsule()
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.clear,
+                                Color.white.opacity(shouldExpand ? 0.2 : 0.14),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 92, height: 58)
+                    .rotationEffect(.degrees(18))
+                    .offset(x: sheenOffset, y: -1)
+            )
+            .mask(Capsule())
+            .allowsHitTesting(false)
     }
     
-    private var shadowColor: Color {
-        if !appState.hasAccessibilityPermissions {
-            return .orange.opacity(0.3)
+    private var shellOpacity: Double {
+        if isHovering || shouldExpand || isActiveState {
+            return 1.0
         }
-        if isAutoReading {
-            return .purple.opacity(0.4)
-        }
-        if hasSelection {
-            return .green.opacity(0.3)
-        }
-        return .black.opacity(0.2)
+        return 0.84
     }
     
-    private var strokeColor: Color {
-        if !appState.hasAccessibilityPermissions {
-            return Color.orange.opacity(0.6)
+    private func startSheenAnimation() {
+        sheenOffset = -260
+        withAnimation(.linear(duration: 6.6).repeatForever(autoreverses: false)) {
+            sheenOffset = 260
         }
-        if isAutoReading {
-            return Color.purple.opacity(0.6)
-        }
-        if hasSelection {
-            return Color.green.opacity(0.5)
-        }
-        return Color.white.opacity(0.2)
     }
     
-    // MARK: - Tap Handler
+    // MARK: - Drag
     
-    private func handleTap() {
-        // If no accessibility permissions, open settings
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { _ in
+                let mouseLocation = NSEvent.mouseLocation
+                if !isDragging {
+                    isDragging = true
+                    floatingOverlay.beginDrag(at: mouseLocation)
+                }
+                floatingOverlay.updateDrag(to: mouseLocation)
+            }
+            .onEnded { _ in
+                isDragging = false
+                floatingOverlay.endDrag()
+            }
+    }
+    
+    // MARK: - Actions
+    
+    private func handlePrimaryTap() {
         if !appState.hasAccessibilityPermissions {
             appState.openAccessibilitySettings()
             return
         }
         
-        // If there's selected text, read it immediately on tap
         if hasSelection {
             appState.speakSelectedText()
         } else {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                isExpanded.toggle()
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+                isPinnedExpanded.toggle()
             }
         }
     }
-    
-    // MARK: - Selection Monitoring
-    
-    private func startSelectionMonitoring() {
-        // Log initial accessibility status
-        print("🔍 Starting selection monitoring. Accessibility granted: \(appState.hasAccessibilityPermissions)")
-        
-        // Check for selected text every 0.5 seconds
-        selectionCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak appState] _ in
-            guard let appState = appState else { return }
-            
-            // Only check if we have accessibility permissions
-            if appState.hasAccessibilityPermissions {
-                let newHasSelection = appState.clipboardService.hasSelectedText()
-                if newHasSelection != hasSelection {
-                    print("📝 Selection state changed: \(newHasSelection)")
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        hasSelection = newHasSelection
-                    }
-                    
-                    // Handle auto-read on selection
-                    if newHasSelection && appState.settings.autoReadOnSelection {
-                        triggerAutoRead()
-                    } else if !newHasSelection {
-                        cancelAutoRead()
-                    }
-                }
-            }
-        }
-    }
-    
-    private func stopSelectionMonitoring() {
-        selectionCheckTimer?.invalidate()
-        selectionCheckTimer = nil
-        cancelAutoRead()
-    }
-    
-    // MARK: - Auto-Read Logic
     
     private func triggerAutoRead() {
-        // Cancel any existing debounce task
         autoReadDebounceTask?.cancel()
         
         let delay = appState.settings.autoReadDelay
-        
         autoReadDebounceTask = Task { @MainActor in
             do {
-                // Wait for debounce delay
                 try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                
-                // Check if task was cancelled
                 if Task.isCancelled { return }
-                
-                // Check if still has selection and auto-read is enabled
-                guard hasSelection && appState.settings.autoReadOnSelection else { return }
-                
-                // Don't auto-read if already playing
+                guard appState.settings.autoReadOnSelection, appState.hasSelectedText else { return }
                 guard appState.playbackState == .idle else { return }
                 
-                // Show auto-reading indicator with pulse animation
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isAutoReading = true
-                }
-                
-                // Pulse animation
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    pulseAnimation = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                appState.clipboardService.getSelectedText { text in
+                    guard let text else { return }
+                    let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !normalized.isEmpty else { return }
+                    
+                    let signature = String(normalized.prefix(200))
+                    let now = Date()
+                    let justReadSameText = signature == lastAutoReadSignature && now.timeIntervalSince(lastAutoReadAt) < 2.0
+                    guard !justReadSameText else { return }
+                    
+                    lastAutoReadSignature = signature
+                    lastAutoReadAt = now
+                    
                     withAnimation(.easeInOut(duration: 0.15)) {
-                        pulseAnimation = false
+                        isAutoReading = true
+                        pulseSelection = true
                     }
-                }
-                
-                print("🎙️ Auto-reading selected text...")
-                appState.speakSelectedText()
-                
-                // Reset auto-reading indicator after a short delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isAutoReading = false
+                    
+                    appState.speak(normalized)
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            pulseSelection = false
+                        }
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            isAutoReading = false
+                        }
                     }
                 }
             } catch {
-                // Task was cancelled
+                // Debounce task cancelled.
             }
         }
     }
@@ -205,73 +255,146 @@ struct FloatingOverlayView: View {
     private func cancelAutoRead() {
         autoReadDebounceTask?.cancel()
         autoReadDebounceTask = nil
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(.easeOut(duration: 0.16)) {
             isAutoReading = false
+            pulseSelection = false
         }
     }
     
-    // MARK: - Status Indicator
+    // MARK: - UI
     
-    private var statusIndicator: some View {
-        ZStack {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 32, height: 32)
-            
-            Image(systemName: statusIcon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+    private var statusButton: some View {
+        Button(action: handlePrimaryTap) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                statusColor.opacity(0.96),
+                                statusColor.opacity(0.74)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 34, height: 34)
+                    .overlay(
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.55), Color.clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    )
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.7), lineWidth: 0.9)
+                    )
+                    .shadow(color: statusColor.opacity(0.38), radius: 8, x: 0, y: 5)
+                
+                Image(systemName: statusIcon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                
+                Circle()
+                    .stroke(statusColor.opacity(0.35), lineWidth: 2)
+                    .scaleEffect(pulseSelection ? 1.28 : 1.0)
+                    .opacity(pulseSelection ? 0 : 1)
+                    .frame(width: 34, height: 34)
+            }
         }
-        .overlay(
-            // Pulse ring when ready to read
-            Circle()
-                .stroke(hasSelection && appState.playbackState == .idle ? Color.green : Color.clear, lineWidth: 2)
-                .frame(width: 38, height: 38)
-                .opacity(pulseAnimation ? 0.8 : 0)
-                .scaleEffect(pulseAnimation ? 1.2 : 1.0)
-        )
+        .buttonStyle(.plain)
+        .help(primaryButtonHelpText)
+    }
+    
+    private var expandedControls: some View {
+        HStack(spacing: 8) {
+            Button("Read") {
+                appState.speakSelectedText()
+            }
+            .buttonStyle(OverlayGlassPillButtonStyle(accent: statusColor))
+            .disabled(!appState.hasAccessibilityPermissions)
+            .help("Read currently selected text")
+            
+            HStack(spacing: 6) {
+                Button {
+                    appState.togglePlayPause()
+                } label: {
+                    Image(systemName: appState.playbackState == .playing ? "pause.fill" : "play.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(OverlayGlassIconButtonStyle(accent: .green))
+                .disabled(appState.playbackState == .idle && appState.currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                
+                Button {
+                    appState.stop()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(OverlayGlassIconButtonStyle(accent: .orange))
+                .disabled(appState.playbackState == .idle)
+            }
+            
+            Rectangle()
+                .fill(Color.white.opacity(0.26))
+                .frame(width: 0.8, height: 15)
+            
+            Button {
+                appState.speakFromClipboard()
+            } label: {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .blue))
+            .help("Read clipboard text")
+            
+            Button {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+                    isPinnedExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: isPinnedExpanded ? "pin.fill" : "pin")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .gray))
+            .help(isPinnedExpanded ? "Unpin expanded view" : "Pin expanded view")
+        }
+        .foregroundStyle(.white.opacity(0.96))
     }
     
     private var statusColor: Color {
-        // No accessibility permissions - show warning
         if !appState.hasAccessibilityPermissions {
-            return .orange
+            return Color(nsColor: .systemOrange)
         }
-        
-        // Auto-reading state
         if isAutoReading {
-            return .purple
+            return Color(nsColor: .systemPurple)
         }
-        
-        // If text is selected, show green (ready to read)
         if hasSelection && appState.playbackState == .idle {
-            return .green
+            return Color(nsColor: .systemBlue)
         }
         
         switch appState.playbackState {
         case .playing:
-            return .green
+            return Color(nsColor: .systemMint)
         case .paused:
-            return .orange
+            return Color(nsColor: .systemOrange)
         case .idle:
-            return .blue
+            return Color(nsColor: .systemBlue)
         }
     }
     
     private var statusIcon: String {
-        // No accessibility permissions - show lock
         if !appState.hasAccessibilityPermissions {
             return "lock.fill"
         }
-        
-        // Auto-reading indicator
         if isAutoReading {
             return "waveform"
         }
-        
-        // If text is selected, show play icon (ready to read)
         if hasSelection && appState.playbackState == .idle {
-            return "play.fill"
+            return "text.cursor"
         }
         
         switch appState.playbackState {
@@ -280,65 +403,104 @@ struct FloatingOverlayView: View {
         case .paused:
             return "pause.fill"
         case .idle:
-            return "speaker.wave.2"
+            return "speaker.wave.2.fill"
         }
     }
     
-    // MARK: - Expanded Controls
-    
-    private var expandedControls: some View {
-        HStack(spacing: 12) {
-            // Read Selection button
-            Button {
-                appState.speakSelectedText()
-            } label: {
-                Label("Read", systemImage: "text.cursor")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(Color.blue.opacity(0.2))
-            .clipShape(Capsule())
-            
-            // Play/Pause/Stop controls
-            if appState.playbackState != .idle {
-                HStack(spacing: 6) {
-                    Button {
-                        appState.togglePlayPause()
-                    } label: {
-                        Image(systemName: appState.playbackState == .playing ? "pause.fill" : "play.fill")
-                            .font(.system(size: 12))
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button {
-                        appState.stop()
-                    } label: {
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 12))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            
-            // Read Clipboard button
-            Button {
-                appState.speakFromClipboard()
-            } label: {
-                Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 12))
-            }
-            .buttonStyle(.plain)
-            .help("Read from Clipboard")
+    private var primaryButtonHelpText: String {
+        if !appState.hasAccessibilityPermissions {
+            return "Open Accessibility Settings"
         }
-        .foregroundStyle(.primary)
+        if hasSelection {
+            return "Read selected text"
+        }
+        return "Expand overlay controls"
     }
 }
 
+private struct OverlayGlassPillButtonStyle: ButtonStyle {
+    let accent: Color
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.95))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Capsule()
+                            .fill(accent.opacity(configuration.isPressed ? 0.24 : 0.16))
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Color.white.opacity(0.5), lineWidth: 0.8)
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Color.black.opacity(0.16), lineWidth: 0.7)
+                            .padding(0.8)
+                    )
+            }
+            .shadow(color: accent.opacity(configuration.isPressed ? 0.08 : 0.18), radius: 6, x: 0, y: 3)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+    }
+}
+
+private struct OverlayGlassIconButtonStyle: ButtonStyle {
+    let accent: Color
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white.opacity(0.95))
+            .frame(width: 24, height: 24)
+            .background {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(accent.opacity(configuration.isPressed ? 0.26 : 0.15))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.5), lineWidth: 0.8)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(Color.black.opacity(0.16), lineWidth: 0.7)
+                            .padding(0.8)
+                    )
+            }
+            .shadow(color: accent.opacity(configuration.isPressed ? 0.07 : 0.16), radius: 5, x: 0, y: 2)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+    }
+}
+
+private struct OverlayVisualEffectView: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+    
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = .active
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+    }
+}
+
+#if DEBUG
 #Preview {
     FloatingOverlayView()
         .environment(AppState.shared)
-        .padding(50)
-        .background(Color.gray.opacity(0.3))
+        .padding(60)
+        .background(Color.gray.opacity(0.25))
 }
+#endif

@@ -21,10 +21,14 @@ final class AppState {
     var progress: SpeechProgress?
     var errorMessage: String?
     var isInputWindowVisible: Bool = false
+    var hasSelectedText: Bool = false
     
     // MARK: - Accessibility Permissions
     var hasAccessibilityPermissions: Bool = false
     private var permissionCheckTimer: Timer?
+    private var selectionMonitorTimer: Timer?
+    private var selectionPositiveStreak: Int = 0
+    private var selectionNegativeStreak: Int = 0
     
     // MARK: - Services
     var speechService: SpeechService
@@ -80,6 +84,12 @@ final class AppState {
         
         // Start accessibility permission monitoring
         startAccessibilityPermissionMonitoring()
+        startSelectionMonitoring()
+    }
+    
+    deinit {
+        permissionCheckTimer?.invalidate()
+        selectionMonitorTimer?.invalidate()
     }
     
     // MARK: - Accessibility Permission Management
@@ -109,6 +119,8 @@ final class AppState {
             if granted {
                 permissionCheckTimer?.invalidate()
                 permissionCheckTimer = nil
+            } else {
+                updateSelectionState(false)
             }
         }
     }
@@ -320,6 +332,55 @@ final class AppState {
     }
     
     // MARK: - Private Methods
+    
+    private func startSelectionMonitoring() {
+        selectionMonitorTimer?.invalidate()
+        selectionMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
+            self?.refreshSelectedTextState()
+        }
+        refreshSelectedTextState()
+    }
+    
+    private func refreshSelectedTextState() {
+        let currentlyTrusted = AXIsProcessTrusted()
+        if currentlyTrusted != hasAccessibilityPermissions {
+            hasAccessibilityPermissions = currentlyTrusted
+            if !currentlyTrusted {
+                permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                    self?.checkAccessibilityPermissions()
+                }
+            }
+        }
+        
+        guard hasAccessibilityPermissions else {
+            selectionPositiveStreak = 0
+            selectionNegativeStreak = 0
+            updateSelectionState(false)
+            return
+        }
+        
+        let hasSelectionNow = clipboardService.hasSelectedText()
+        
+        if hasSelectionNow {
+            selectionPositiveStreak += 1
+            selectionNegativeStreak = 0
+            if selectionPositiveStreak >= 1 {
+                updateSelectionState(true)
+            }
+        } else {
+            selectionNegativeStreak += 1
+            selectionPositiveStreak = 0
+            if selectionNegativeStreak >= 2 {
+                updateSelectionState(false)
+            }
+        }
+    }
+    
+    private func updateSelectionState(_ newValue: Bool) {
+        if hasSelectedText != newValue {
+            hasSelectedText = newValue
+        }
+    }
     
     private func setupSpeechServiceCallbacks() {
         speechService.onStateChange = { [weak self] state in

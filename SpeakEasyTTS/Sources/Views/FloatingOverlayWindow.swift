@@ -16,6 +16,8 @@ final class FloatingOverlayController: ObservableObject {
     static let shared = FloatingOverlayController()
     
     private var panel: FloatingOverlayPanel?
+    private var dragStartMouseLocation: NSPoint?
+    private var dragStartPanelOrigin: NSPoint?
     @Published var isVisible: Bool = false
     
     private init() {}
@@ -59,12 +61,72 @@ final class FloatingOverlayController: ObservableObject {
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
     
+    func beginDrag(at screenLocation: NSPoint) {
+        guard let panel else { return }
+        dragStartMouseLocation = screenLocation
+        dragStartPanelOrigin = panel.frame.origin
+    }
+    
+    func updateDrag(to screenLocation: NSPoint) {
+        guard let panel,
+              let dragStartMouseLocation,
+              let dragStartPanelOrigin else { return }
+        
+        let deltaX = screenLocation.x - dragStartMouseLocation.x
+        let deltaY = screenLocation.y - dragStartMouseLocation.y
+        
+        var newOrigin = NSPoint(
+            x: dragStartPanelOrigin.x + deltaX,
+            y: dragStartPanelOrigin.y + deltaY
+        )
+        
+        if let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
+            let maxX = visibleFrame.maxX - panel.frame.width
+            let maxY = visibleFrame.maxY - panel.frame.height
+            newOrigin.x = min(max(newOrigin.x, visibleFrame.minX), maxX)
+            newOrigin.y = min(max(newOrigin.y, visibleFrame.minY), maxY)
+        }
+        
+        panel.setFrameOrigin(newOrigin)
+    }
+    
+    func endDrag() {
+        dragStartMouseLocation = nil
+        dragStartPanelOrigin = nil
+    }
+    
+    func updateSize(width: CGFloat, height: CGFloat = 56) {
+        guard let panel else { return }
+        
+        var frame = panel.frame
+        let targetWidth = max(50, width)
+        let targetHeight = max(40, height)
+        
+        if abs(frame.width - targetWidth) < 0.5 && abs(frame.height - targetHeight) < 0.5 {
+            return
+        }
+        
+        // Keep the overlay centered around its current anchor while resizing.
+        frame.origin.x += (frame.width - targetWidth) / 2
+        frame.origin.y += (frame.height - targetHeight) / 2
+        frame.size = NSSize(width: targetWidth, height: targetHeight)
+        
+        if let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
+            let maxX = visibleFrame.maxX - frame.width
+            let maxY = visibleFrame.maxY - frame.height
+            frame.origin.x = min(max(frame.origin.x, visibleFrame.minX), maxX)
+            frame.origin.y = min(max(frame.origin.y, visibleFrame.minY), maxY)
+        }
+        
+        panel.setFrame(frame, display: true)
+    }
+    
     private func createPanel() {
         let contentView = FloatingOverlayView()
             .environment(AppState.shared)
         
         let panel = FloatingOverlayPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 180, height: 44),
+            contentRect: NSRect(x: 0, y: 0, width: 50, height: 56),
             backing: .buffered,
             defer: false
         )
@@ -133,8 +195,8 @@ final class FloatingOverlayPanel: NSPanel {
         self.standardWindowButton(.zoomButton)?.isHidden = true
         
         // MARK: - Interaction
-        // Allow dragging by clicking anywhere on the window background
-        self.isMovableByWindowBackground = true
+        // We drive drag manually from SwiftUI to avoid jitter during hover/size changes.
+        self.isMovableByWindowBackground = false
         
         // Don't release when closed - user may open/close frequently
         self.isReleasedWhenClosed = false
@@ -142,6 +204,7 @@ final class FloatingOverlayPanel: NSPanel {
         // Ignore mouse events that should pass through to windows below
         // (handled by the SwiftUI view for specific areas)
         self.ignoresMouseEvents = false
+        self.acceptsMouseMovedEvents = true
         
         // MARK: - Animation
         self.animationBehavior = .utilityWindow
@@ -149,10 +212,9 @@ final class FloatingOverlayPanel: NSPanel {
     
     // MARK: - Focus Behavior
     
-    /// Allow the panel to receive key events when needed (e.g., for button clicks)
-    /// but this won't make it steal focus proactively
+    /// Keep panel non-key to preserve frontmost app selection/focus.
     override var canBecomeKey: Bool {
-        return true
+        return false
     }
     
     /// Prevent the panel from becoming the main window

@@ -160,8 +160,21 @@ final class ClipboardService {
     
     /// Use Accessibility API to read selected text directly (no clipboard modification)
     private func getSelectedTextViaAccessibility() -> String? {
-        // Get the focused application
+        guard AXIsProcessTrusted() else { return nil }
+        
+        // First try the system-wide focused element. This is resilient even when
+        // our overlay receives pointer interaction.
+        if let focusedElement = getSystemWideFocusedElement(),
+           let text = getSelectedTextFromElement(focusedElement),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+        
+        // Fallback to frontmost app path, excluding ourselves.
         guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
+            return nil
+        }
+        if focusedApp.bundleIdentifier == Bundle.main.bundleIdentifier {
             return nil
         }
         
@@ -179,6 +192,18 @@ final class ClipboardService {
         
         // Try to get selected text from the focused element
         return getSelectedTextFromElement(element as! AXUIElement)
+    }
+    
+    private func getSystemWideFocusedElement() -> AXUIElement? {
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedElement: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+        
+        guard result == .success, let element = focusedElement else {
+            return nil
+        }
+        
+        return (element as! AXUIElement)
     }
     
     /// Get selected text from a specific AXUIElement
@@ -266,7 +291,18 @@ final class ClipboardService {
             return false
         }
         
+        // Prefer system-wide focused element; avoids false negatives if this app
+        // briefly becomes active during overlay interaction.
+        if let focusedElement = getSystemWideFocusedElement(),
+           hasSelection(in: focusedElement) {
+            return true
+        }
+        
         guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
+            return false
+        }
+        
+        if focusedApp.bundleIdentifier == Bundle.main.bundleIdentifier {
             return false
         }
         
@@ -277,25 +313,8 @@ final class ClipboardService {
         var focusedElement: CFTypeRef?
         let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
         
-        if focusResult == .success, let element = focusedElement {
-            // Check for selected text
-            var selectedText: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(element as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedText)
-            
-            if result == .success, let text = selectedText as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return true
-            }
-            
-            // Try selected text range as fallback
-            var selectedRange: CFTypeRef?
-            let rangeResult = AXUIElementCopyAttributeValue(element as! AXUIElement, kAXSelectedTextRangeAttribute as CFString, &selectedRange)
-            
-            if rangeResult == .success, let range = selectedRange {
-                var cfRange = CFRange()
-                if AXValueGetValue(range as! AXValue, .cfRange, &cfRange) {
-                    return cfRange.length > 0
-                }
-            }
+        if focusResult == .success, let element = focusedElement, hasSelection(in: element as! AXUIElement) {
+            return true
         }
         
         // Fallback: Try getting selection from system-wide element
@@ -304,10 +323,7 @@ final class ClipboardService {
         let systemResult = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &systemFocused)
         
         if systemResult == .success, let element = systemFocused {
-            var selectedText: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(element as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedText)
-            
-            if result == .success, let text = selectedText as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if hasSelection(in: element as! AXUIElement) {
                 return true
             }
         }
@@ -322,6 +338,12 @@ final class ClipboardService {
     
     /// Copy selected text using CGEvent simulation then read clipboard (fallback)
     private func copySelectedTextThenRead(completion: @escaping (String?) -> Void) {
+        // If we are frontmost, Cmd+C fallback won't target the user's selected text.
+        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier {
+            completion(nil)
+            return
+        }
+        
         // Store current clipboard content
         let previousContent = getText()
         let previousChangeCount = pasteboard.changeCount
@@ -385,5 +407,25 @@ final class ClipboardService {
                 }
             }
         }
+    }
+    
+    private func hasSelection(in element: AXUIElement) -> Bool {
+        var selectedText: CFTypeRef?
+        let textResult = AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedText)
+        
+        if textResult == .success,
+           let text = selectedText as? String,
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        
+        var selectedRange: CFTypeRef?
+        let rangeResult = AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &selectedRange)
+        guard rangeResult == .success, let range = selectedRange else {
+            return false
+        }
+        
+        var cfRange = CFRange()
+        return AXValueGetValue(range as! AXValue, .cfRange, &cfRange) && cfRange.length > 0
     }
 }

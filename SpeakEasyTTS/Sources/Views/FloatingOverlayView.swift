@@ -14,6 +14,7 @@ struct FloatingOverlayView: View {
     @State private var isDragging = false
     @State private var isAutoReading = false
     @State private var pulseSelection = false
+    @State private var hoverCollapseTask: Task<Void, Never>?
     @State private var autoReadDebounceTask: Task<Void, Never>?
     @State private var lastAutoReadSignature: String = ""
     @State private var lastAutoReadAt: Date = .distantPast
@@ -69,8 +70,20 @@ struct FloatingOverlayView: View {
         }
         .onHover { hovering in
             guard !isDragging else { return }
-            withAnimation(.easeInOut(duration: 0.16)) {
-                isHovering = hovering
+            hoverCollapseTask?.cancel()
+            
+            if hovering {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isHovering = true
+                }
+            } else {
+                hoverCollapseTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 160_000_000)
+                    if Task.isCancelled { return }
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isHovering = false
+                    }
+                }
             }
         }
         .onChange(of: appState.hasSelectedText) { _, newValue in
@@ -81,6 +94,7 @@ struct FloatingOverlayView: View {
             }
         }
         .onDisappear {
+            hoverCollapseTask?.cancel()
             cancelAutoRead()
             floatingOverlay.endDrag()
         }
@@ -89,21 +103,23 @@ struct FloatingOverlayView: View {
     
     private var glassBackground: some View {
         ZStack {
-            OverlayVisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+            OverlayVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
             
             LinearGradient(
                 colors: [
-                    Color.white.opacity(0.24),
-                    Color.white.opacity(0.06),
-                    Color.black.opacity(0.15)
+                    Color.white.opacity(0.12),
+                    Color.white.opacity(0.03),
+                    Color.black.opacity(0.28)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             
+            Color.black.opacity(0.16)
+            
             RadialGradient(
                 colors: [
-                    statusColor.opacity(0.22),
+                    statusColor.opacity(0.18),
                     Color.clear
                 ],
                 center: .leading,
@@ -120,13 +136,13 @@ struct FloatingOverlayView: View {
     private var glassEdges: some View {
         ZStack {
             Capsule()
-                .strokeBorder(Color.white.opacity(shouldExpand ? 0.55 : 0.42), lineWidth: 0.9)
+                .strokeBorder(Color.white.opacity(shouldExpand ? 0.62 : 0.5), lineWidth: 0.9)
             
             Capsule()
-                .strokeBorder(statusColor.opacity(isActiveState ? 0.35 : 0.16), lineWidth: 1.0)
+                .strokeBorder(statusColor.opacity(isActiveState ? 0.46 : 0.24), lineWidth: 1.0)
             
             Capsule()
-                .strokeBorder(Color.black.opacity(0.2), lineWidth: 0.8)
+                .strokeBorder(Color.black.opacity(0.28), lineWidth: 0.8)
                 .padding(0.9)
         }
     }
@@ -158,7 +174,7 @@ struct FloatingOverlayView: View {
         if isHovering || shouldExpand || isActiveState {
             return 1.0
         }
-        return 0.84
+        return 0.94
     }
     
     private func startSheenAnimation() {
@@ -436,6 +452,10 @@ private struct OverlayGlassPillButtonStyle: ButtonStyle {
                     )
                     .overlay(
                         Capsule()
+                            .fill(Color.black.opacity(0.12))
+                    )
+                    .overlay(
+                        Capsule()
                             .strokeBorder(Color.white.opacity(0.5), lineWidth: 0.8)
                     )
                     .overlay(
@@ -462,6 +482,10 @@ private struct OverlayGlassIconButtonStyle: ButtonStyle {
                     .overlay(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(accent.opacity(configuration.isPressed ? 0.26 : 0.15))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.black.opacity(0.14))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)

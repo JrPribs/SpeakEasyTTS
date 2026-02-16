@@ -106,9 +106,8 @@ final class FloatingOverlayController: ObservableObject {
             return
         }
         
-        // Keep the overlay centered around its current anchor while resizing.
-        frame.origin.x += (frame.width - targetWidth) / 2
-        frame.origin.y += (frame.height - targetHeight) / 2
+        // Preserve the leading edge so hover expansion doesn't jump away from cursor.
+        // If we're near the right edge, clamp to keep the panel on screen.
         frame.size = NSSize(width: targetWidth, height: targetHeight)
         
         if let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {

@@ -23,7 +23,7 @@ struct FloatingOverlayView: View {
     private var collapsedWidth: CGFloat {
         appState.hasAccessibilityPermissions ? 50 : 100
     }
-    private let expandedWidth: CGFloat = 266
+    private let expandedWidth: CGFloat = 298
     
     private var hasSelection: Bool {
         appState.hasSelectedText
@@ -372,7 +372,16 @@ struct FloatingOverlayView: View {
             }
             .buttonStyle(OverlayGlassIconButtonStyle(accent: .blue))
             .help("Read clipboard text")
-            
+
+            Button {
+                appState.speakClaudePlanFromPicker()
+            } label: {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .purple))
+            .help("Read Claude Code plan")
+
             Button {
                 withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
                     isPinnedExpanded.toggle()

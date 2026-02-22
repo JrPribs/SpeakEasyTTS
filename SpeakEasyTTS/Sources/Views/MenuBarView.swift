@@ -39,6 +39,11 @@ struct MenuBarView: View {
             
             Divider()
             
+            // Claude Code plan reading
+            claudePlanSection
+
+            Divider()
+
             // Actions
             actionsSection
             
@@ -313,6 +318,40 @@ struct MenuBarView: View {
         }
     }
     
+    // MARK: - Claude Plan Section
+
+    private var claudePlanSection: some View {
+        VStack(spacing: 4) {
+            Button {
+                appState.speakRecentClaudePlan()
+            } label: {
+                HStack {
+                    Image(systemName: "doc.text.magnifyingglass")
+                    Text("Read Recent Plan")
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+
+            Button {
+                appState.speakClaudePlanFromPicker()
+            } label: {
+                HStack {
+                    Image(systemName: "folder")
+                    Text("Open Plan File...")
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+        }
+    }
+
     // MARK: - Footer Section
     
     private var footerSection: some View {

@@ -37,6 +37,7 @@ final class AppState {
     let settingsStore: SettingsStore
     let voiceManager: VoiceManager
     let clipboardService: ClipboardService
+    let claudeCodeService = ClaudeCodeService()
     
     // MARK: - Private
     private var cancellables = Set<AnyCancellable>()
@@ -332,8 +333,43 @@ final class AppState {
         isInputWindowVisible = false
     }
     
+    // MARK: - Claude Code Plan Reading
+
+    /// Auto-find and read the most recent Claude Code plan
+    func speakRecentClaudePlan() {
+        guard let url = claudeCodeService.findRecentPlan() else {
+            errorMessage = "No Claude Code plan files found in ~/.claude/projects/"
+            return
+        }
+        guard let content = claudeCodeService.readPlan(at: url) else {
+            errorMessage = "Could not read plan file"
+            return
+        }
+        let processed = claudeCodeService.preprocessForSpeech(content)
+        speak(processed)
+    }
+
+    /// Show file picker and read the selected plan file
+    func speakClaudePlanFromPicker() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.plainText, .text]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude")
+        panel.title = "Select Claude Code Plan"
+        panel.message = "Choose a plan or conversation file to read aloud"
+
+        NSApp.activate(ignoringOtherApps: true)
+        if panel.runModal() == .OK, let url = panel.url {
+            if let content = claudeCodeService.readPlan(at: url) {
+                let processed = claudeCodeService.preprocessForSpeech(content)
+                speak(processed)
+            }
+        }
+    }
+
     // MARK: - Private Methods
-    
+
     private func startSelectionMonitoring() {
         selectionMonitorTimer?.invalidate()
         selectionMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
@@ -345,6 +381,7 @@ final class AppState {
     private var lastLoggedTrustedState: Bool?
 
     private func refreshSelectedTextState() {
+        clipboardService.trackFrontmostApp()
         let currentlyTrusted = AXIsProcessTrusted()
         if currentlyTrusted != hasAccessibilityPermissions {
             hasAccessibilityPermissions = currentlyTrusted

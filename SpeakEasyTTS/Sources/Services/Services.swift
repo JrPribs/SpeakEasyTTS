@@ -129,6 +129,8 @@ extension Voice.VoiceQuality {
 /// Handles clipboard operations and selected text retrieval
 final class ClipboardService {
     private let pasteboard = NSPasteboard.general
+    /// The last observed non-self frontmost app, used as fallback when our overlay becomes frontmost.
+    private var lastExternalApp: NSRunningApplication?
     
     /// Get text from clipboard
     func getText() -> String? {
@@ -197,9 +199,9 @@ final class ClipboardService {
             return getSelectedTextFromWindow(appElement: appElement)
         }
 
-        // If WE are frontmost (overlay interaction), search other visible apps
-        for app in NSWorkspace.shared.runningApplications where !app.isActive && app.activationPolicy == .regular {
-            let pid = app.processIdentifier
+        // If WE are frontmost (overlay interaction), query the last known external app
+        if let lastApp = lastExternalApp, lastApp.isTerminated == false {
+            let pid = lastApp.processIdentifier
             let appElement = AXUIElementCreateApplication(pid)
             var focusedElement: CFTypeRef?
             let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
@@ -209,6 +211,7 @@ final class ClipboardService {
                     return text
                 }
             }
+            return getSelectedTextFromWindow(appElement: appElement)
         }
 
         return nil
@@ -336,22 +339,30 @@ final class ClipboardService {
             }
         }
 
-        // If WE are frontmost (overlay interaction), try other visible apps
-        if focusedApp.bundleIdentifier == Bundle.main.bundleIdentifier {
-            for app in NSWorkspace.shared.runningApplications where !app.isActive && app.activationPolicy == .regular {
-                let pid = app.processIdentifier
-                let appElement = AXUIElementCreateApplication(pid)
-                var focusedElement: CFTypeRef?
-                let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
-                if result == .success, let element = focusedElement, hasSelection(in: element as! AXUIElement) {
-                    return true
-                }
+        // If WE are frontmost (overlay interaction), query the last known external app
+        if focusedApp.bundleIdentifier == Bundle.main.bundleIdentifier,
+           let lastApp = lastExternalApp, lastApp.isTerminated == false {
+            let pid = lastApp.processIdentifier
+            let appElement = AXUIElementCreateApplication(pid)
+            var focusedElement: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+            if result == .success, let element = focusedElement, hasSelection(in: element as! AXUIElement) {
+                return true
             }
         }
 
         return false
     }
     
+    /// Track the frontmost non-self app so we can query it when our overlay is active.
+    /// Call this regularly (e.g. from the selection polling timer).
+    func trackFrontmostApp() {
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.bundleIdentifier != Bundle.main.bundleIdentifier {
+            lastExternalApp = front
+        }
+    }
+
     /// Check if accessibility permissions are granted
     func hasAccessibilityPermissions() -> Bool {
         return AXIsProcessTrusted()

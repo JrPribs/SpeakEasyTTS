@@ -116,8 +116,6 @@ struct FloatingOverlayView: View {
     
     private var glassBackground: some View {
         ZStack {
-            OverlayVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-
             LinearGradient(
                 colors: [
                     Color.white.opacity(0.06),

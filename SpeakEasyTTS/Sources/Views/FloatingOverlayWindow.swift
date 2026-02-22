@@ -71,22 +71,15 @@ final class FloatingOverlayController: ObservableObject {
         guard let panel,
               let dragStartMouseLocation,
               let dragStartPanelOrigin else { return }
-        
+
         let deltaX = screenLocation.x - dragStartMouseLocation.x
         let deltaY = screenLocation.y - dragStartMouseLocation.y
-        
-        var newOrigin = NSPoint(
+
+        let newOrigin = NSPoint(
             x: dragStartPanelOrigin.x + deltaX,
             y: dragStartPanelOrigin.y + deltaY
         )
-        
-        if let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
-            let maxX = visibleFrame.maxX - panel.frame.width
-            let maxY = visibleFrame.maxY - panel.frame.height
-            newOrigin.x = min(max(newOrigin.x, visibleFrame.minX), maxX)
-            newOrigin.y = min(max(newOrigin.y, visibleFrame.minY), maxY)
-        }
-        
+
         panel.setFrameOrigin(newOrigin)
     }
     
@@ -97,43 +90,53 @@ final class FloatingOverlayController: ObservableObject {
     
     func updateSize(width: CGFloat, height: CGFloat = 56) {
         guard let panel else { return }
-        
+
         var frame = panel.frame
         let targetWidth = max(50, width)
         let targetHeight = max(40, height)
-        
+
         if abs(frame.width - targetWidth) < 0.5 && abs(frame.height - targetHeight) < 0.5 {
             return
         }
-        
-        // Preserve the leading edge so hover expansion doesn't jump away from cursor.
-        // If we're near the right edge, clamp to keep the panel on screen.
+
         frame.size = NSSize(width: targetWidth, height: targetHeight)
-        
-        if let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
-            let maxX = visibleFrame.maxX - frame.width
-            let maxY = visibleFrame.maxY - frame.height
-            frame.origin.x = min(max(frame.origin.x, visibleFrame.minX), maxX)
-            frame.origin.y = min(max(frame.origin.y, visibleFrame.minY), maxY)
-        }
-        
         panel.setFrame(frame, display: true)
     }
     
     private func createPanel() {
         let contentView = FloatingOverlayView()
             .environment(AppState.shared)
-        
+
         let panel = FloatingOverlayPanel(
             contentRect: NSRect(x: 0, y: 0, width: 50, height: 56),
             backing: .buffered,
             defer: false
         )
-        
-        panel.contentView = NSHostingView(rootView: contentView)
+
+        // Use NSVisualEffectView as the window's content view for proper behind-window blur
+        let effectView = NSVisualEffectView()
+        effectView.material = .hudWindow
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.wantsLayer = true
+
+        let hostingView = NSHostingView(rootView: contentView)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        // Transparent background so the effect view shows through
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = .clear
+
+        effectView.addSubview(hostingView)
+        NSLayoutConstraint.activate([
+            hostingView.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
+            hostingView.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
+            hostingView.topAnchor.constraint(equalTo: effectView.topAnchor),
+            hostingView.bottomAnchor.constraint(equalTo: effectView.bottomAnchor)
+        ])
+
+        panel.contentView = effectView
         self.panel = panel
-        
-        // Position at bottom center after creating
+
         positionAtBottomCenter()
     }
 }

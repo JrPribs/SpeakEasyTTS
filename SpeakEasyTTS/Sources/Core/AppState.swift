@@ -119,6 +119,7 @@ final class AppState {
             if granted {
                 permissionCheckTimer?.invalidate()
                 permissionCheckTimer = nil
+                HotkeyManager.shared.registerGlobalHotkey()
             } else {
                 updateSelectionState(false)
             }
@@ -345,7 +346,9 @@ final class AppState {
         let currentlyTrusted = AXIsProcessTrusted()
         if currentlyTrusted != hasAccessibilityPermissions {
             hasAccessibilityPermissions = currentlyTrusted
-            if !currentlyTrusted {
+            if currentlyTrusted {
+                HotkeyManager.shared.registerGlobalHotkey()
+            } else {
                 permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
                     self?.checkAccessibilityPermissions()
                 }

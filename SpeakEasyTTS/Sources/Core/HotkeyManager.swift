@@ -40,6 +40,11 @@ final class HotkeyManager {
     
     /// Register the global hotkey (Cmd+Shift+S)
     func registerGlobalHotkey() {
+        // Unregister existing hotkey to prevent double-registration
+        if hotkeyRef != nil {
+            unregisterGlobalHotkey()
+        }
+
         // Check accessibility permissions first
         guard AXIsProcessTrusted() else {
             print("HotkeyManager: Accessibility permissions not granted")

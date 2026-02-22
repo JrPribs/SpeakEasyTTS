@@ -20,7 +20,9 @@ struct FloatingOverlayView: View {
     @State private var lastAutoReadAt: Date = .distantPast
     @State private var sheenOffset: CGFloat = -260
     
-    private let collapsedWidth: CGFloat = 50
+    private var collapsedWidth: CGFloat {
+        appState.hasAccessibilityPermissions ? 50 : 100
+    }
     private let expandedWidth: CGFloat = 266
     
     private var hasSelection: Bool {
@@ -42,7 +44,13 @@ struct FloatingOverlayView: View {
     var body: some View {
         HStack(spacing: 10) {
             statusButton
-            
+
+            if !shouldExpand && !appState.hasAccessibilityPermissions {
+                Text("No Access")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+
             if controlsVisible {
                 expandedControls
                     .transition(.opacity.combined(with: .move(edge: .leading)))
@@ -67,6 +75,11 @@ struct FloatingOverlayView: View {
         }
         .onChange(of: shouldExpand) { _, expanded in
             floatingOverlay.updateSize(width: expanded ? expandedWidth : collapsedWidth)
+        }
+        .onChange(of: appState.hasAccessibilityPermissions) { _, _ in
+            if !shouldExpand {
+                floatingOverlay.updateSize(width: collapsedWidth)
+            }
         }
         .onHover { hovering in
             guard !isDragging else { return }
@@ -104,22 +117,20 @@ struct FloatingOverlayView: View {
     private var glassBackground: some View {
         ZStack {
             OverlayVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-            
+
             LinearGradient(
                 colors: [
-                    Color.white.opacity(0.12),
-                    Color.white.opacity(0.03),
-                    Color.black.opacity(0.28)
+                    Color.white.opacity(0.06),
+                    Color.clear,
+                    Color.black.opacity(0.08)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            
-            Color.black.opacity(0.16)
-            
+
             RadialGradient(
                 colors: [
-                    statusColor.opacity(0.18),
+                    statusColor.opacity(0.10),
                     Color.clear
                 ],
                 center: .leading,
@@ -130,21 +141,18 @@ struct FloatingOverlayView: View {
         }
         .clipShape(Capsule())
         .shadow(color: statusColor.opacity(isActiveState ? 0.22 : 0.12), radius: 13, x: 0, y: 8)
-        .shadow(color: .black.opacity(0.16), radius: 20, x: 0, y: 10)
     }
     
     private var glassEdges: some View {
-        ZStack {
-            Capsule()
-                .strokeBorder(Color.white.opacity(shouldExpand ? 0.62 : 0.5), lineWidth: 0.9)
-            
-            Capsule()
-                .strokeBorder(statusColor.opacity(isActiveState ? 0.46 : 0.24), lineWidth: 1.0)
-            
-            Capsule()
-                .strokeBorder(Color.black.opacity(0.28), lineWidth: 0.8)
-                .padding(0.9)
-        }
+        Capsule()
+            .strokeBorder(
+                LinearGradient(
+                    colors: [Color.white.opacity(0.45), Color.white.opacity(0.15)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: 0.9
+            )
     }
     
     private var specularHighlight: some View {
@@ -155,7 +163,7 @@ struct FloatingOverlayView: View {
                         LinearGradient(
                             colors: [
                                 Color.clear,
-                                Color.white.opacity(shouldExpand ? 0.2 : 0.14),
+                                Color.white.opacity(shouldExpand ? 0.12 : 0.08),
                                 Color.clear
                             ],
                             startPoint: .top,
@@ -448,20 +456,11 @@ private struct OverlayGlassPillButtonStyle: ButtonStyle {
                     .fill(.ultraThinMaterial)
                     .overlay(
                         Capsule()
-                            .fill(accent.opacity(configuration.isPressed ? 0.24 : 0.16))
-                    )
-                    .overlay(
-                        Capsule()
-                            .fill(Color.black.opacity(0.12))
+                            .fill(accent.opacity(configuration.isPressed ? 0.18 : 0.10))
                     )
                     .overlay(
                         Capsule()
                             .strokeBorder(Color.white.opacity(0.5), lineWidth: 0.8)
-                    )
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(Color.black.opacity(0.16), lineWidth: 0.7)
-                            .padding(0.8)
                     )
             }
             .shadow(color: accent.opacity(configuration.isPressed ? 0.08 : 0.18), radius: 6, x: 0, y: 3)
@@ -481,20 +480,11 @@ private struct OverlayGlassIconButtonStyle: ButtonStyle {
                     .fill(.ultraThinMaterial)
                     .overlay(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(accent.opacity(configuration.isPressed ? 0.26 : 0.15))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.black.opacity(0.14))
+                            .fill(accent.opacity(configuration.isPressed ? 0.20 : 0.10))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.5), lineWidth: 0.8)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(Color.black.opacity(0.16), lineWidth: 0.7)
-                            .padding(0.8)
                     )
             }
             .shadow(color: accent.opacity(configuration.isPressed ? 0.07 : 0.16), radius: 5, x: 0, y: 2)

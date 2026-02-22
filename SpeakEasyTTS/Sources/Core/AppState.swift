@@ -342,6 +342,8 @@ final class AppState {
         refreshSelectedTextState()
     }
     
+    private var lastLoggedTrustedState: Bool?
+
     private func refreshSelectedTextState() {
         let currentlyTrusted = AXIsProcessTrusted()
         if currentlyTrusted != hasAccessibilityPermissions {
@@ -354,7 +356,15 @@ final class AppState {
                 }
             }
         }
-        
+
+        // Log AX trust state changes (not every poll)
+        if lastLoggedTrustedState != currentlyTrusted {
+            lastLoggedTrustedState = currentlyTrusted
+            if !currentlyTrusted {
+                print("AX not trusted - selection detection disabled")
+            }
+        }
+
         guard hasAccessibilityPermissions else {
             selectionPositiveStreak = 0
             selectionNegativeStreak = 0

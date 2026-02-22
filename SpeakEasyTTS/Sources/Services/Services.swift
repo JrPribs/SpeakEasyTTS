@@ -161,37 +161,57 @@ final class ClipboardService {
     /// Use Accessibility API to read selected text directly (no clipboard modification)
     private func getSelectedTextViaAccessibility() -> String? {
         guard AXIsProcessTrusted() else { return nil }
-        
-        // First try the system-wide focused element. This is resilient even when
-        // our overlay receives pointer interaction.
-        if let focusedElement = getSystemWideFocusedElement(),
-           let text = getSelectedTextFromElement(focusedElement),
-           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return text
+
+        let myPID = ProcessInfo.processInfo.processIdentifier
+
+        // Try system-wide focused element, but verify it's not ours
+        if let focusedElement = getSystemWideFocusedElement() {
+            var elementPID: pid_t = 0
+            AXUIElementGetPid(focusedElement, &elementPID)
+            if elementPID != myPID,
+               let text = getSelectedTextFromElement(focusedElement),
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return text
+            }
         }
-        
-        // Fallback to frontmost app path, excluding ourselves.
+
         guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
             return nil
         }
-        if focusedApp.bundleIdentifier == Bundle.main.bundleIdentifier {
-            return nil
-        }
-        
-        let pid = focusedApp.processIdentifier
-        let appElement = AXUIElementCreateApplication(pid)
-        
-        // Get the focused UI element
-        var focusedElement: CFTypeRef?
-        let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
-        
-        guard focusResult == .success, let element = focusedElement else {
-            // Try to get the focused window's first responder
+
+        // If another app is frontmost, check its focused element
+        if focusedApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            let pid = focusedApp.processIdentifier
+            let appElement = AXUIElementCreateApplication(pid)
+
+            var focusedElement: CFTypeRef?
+            let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+
+            if focusResult == .success, let element = focusedElement {
+                if let text = getSelectedTextFromElement(element as! AXUIElement),
+                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return text
+                }
+            }
+
             return getSelectedTextFromWindow(appElement: appElement)
         }
-        
-        // Try to get selected text from the focused element
-        return getSelectedTextFromElement(element as! AXUIElement)
+
+        // If WE are frontmost (overlay interaction), search other visible apps
+        for app in NSWorkspace.shared.runningApplications where !app.isActive && app.activationPolicy == .regular {
+            let pid = app.processIdentifier
+            let appElement = AXUIElementCreateApplication(pid)
+            var focusedElement: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+            if result == .success, let element = focusedElement {
+                if let text = getSelectedTextFromElement(element as! AXUIElement),
+                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return text
+                }
+            }
+        }
+
+        return nil
     }
     
     private func getSystemWideFocusedElement() -> AXUIElement? {
@@ -284,50 +304,51 @@ final class ClipboardService {
     /// Check if there's currently selected text (quick check without getting the text)
     /// Uses multiple methods for better compatibility
     func hasSelectedText() -> Bool {
-        // First check if we have accessibility permissions
         if !AXIsProcessTrusted() {
-            // Can't check selection without accessibility - return false
-            // The app will prompt user if needed
             return false
         }
-        
-        // Prefer system-wide focused element; avoids false negatives if this app
-        // briefly becomes active during overlay interaction.
-        if let focusedElement = getSystemWideFocusedElement(),
-           hasSelection(in: focusedElement) {
-            return true
-        }
-        
-        guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
-            return false
-        }
-        
-        if focusedApp.bundleIdentifier == Bundle.main.bundleIdentifier {
-            return false
-        }
-        
-        let pid = focusedApp.processIdentifier
-        let appElement = AXUIElementCreateApplication(pid)
-        
-        // Try to get the focused element
-        var focusedElement: CFTypeRef?
-        let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
-        
-        if focusResult == .success, let element = focusedElement, hasSelection(in: element as! AXUIElement) {
-            return true
-        }
-        
-        // Fallback: Try getting selection from system-wide element
-        let systemWide = AXUIElementCreateSystemWide()
-        var systemFocused: CFTypeRef?
-        let systemResult = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &systemFocused)
-        
-        if systemResult == .success, let element = systemFocused {
-            if hasSelection(in: element as! AXUIElement) {
+
+        let myPID = ProcessInfo.processInfo.processIdentifier
+
+        // Check system-wide focused element, but verify it's not ours
+        if let focusedElement = getSystemWideFocusedElement() {
+            var elementPID: pid_t = 0
+            AXUIElementGetPid(focusedElement, &elementPID)
+            if elementPID != myPID && hasSelection(in: focusedElement) {
                 return true
             }
         }
-        
+
+        guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
+            return false
+        }
+
+        // If another app is frontmost, check its focused element
+        if focusedApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            let pid = focusedApp.processIdentifier
+            let appElement = AXUIElementCreateApplication(pid)
+
+            var focusedElement: CFTypeRef?
+            let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+
+            if focusResult == .success, let element = focusedElement, hasSelection(in: element as! AXUIElement) {
+                return true
+            }
+        }
+
+        // If WE are frontmost (overlay interaction), try other visible apps
+        if focusedApp.bundleIdentifier == Bundle.main.bundleIdentifier {
+            for app in NSWorkspace.shared.runningApplications where !app.isActive && app.activationPolicy == .regular {
+                let pid = app.processIdentifier
+                let appElement = AXUIElementCreateApplication(pid)
+                var focusedElement: CFTypeRef?
+                let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+                if result == .success, let element = focusedElement, hasSelection(in: element as! AXUIElement) {
+                    return true
+                }
+            }
+        }
+
         return false
     }
     

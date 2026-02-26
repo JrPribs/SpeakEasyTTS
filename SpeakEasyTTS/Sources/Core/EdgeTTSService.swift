@@ -105,36 +105,66 @@ final class EdgeTTSService: SpeechService {
         onStateChange?(.idle)
     }
     
+    // MARK: - Python Path Discovery
+
+    private static var cachedPython3Path: String?
+
+    static func findPython3Path() -> String {
+        if let cached = cachedPython3Path { return cached }
+
+        let candidates = [
+            "/opt/homebrew/bin/python3",   // Apple Silicon Homebrew
+            "/usr/local/bin/python3",       // Intel Homebrew
+        ]
+
+        for path in candidates {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                cachedPython3Path = path
+                print("[EdgeTTS] Found python3 at: \(path)")
+                return path
+            }
+        }
+
+        // Fall back to PATH resolution via shell
+        print("[EdgeTTS] No python3 found at known paths, falling back to PATH resolution")
+        cachedPython3Path = "python3"
+        return "python3"
+    }
+
     // MARK: - Private Methods
-    
+
     private func buildEdgeTTSCommand(text: String, voice: String, rate: String, outputFile: String) -> String {
         // Escape text for shell
         let escapedText = text
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "'", with: "\\'")
-        
-        // Use Python edge-tts (Homebrew/pip Python, not Xcode's)
+
+        let pythonPath = EdgeTTSService.findPython3Path()
         return """
-        /usr/local/bin/python3 -m edge_tts -t '\(escapedText)' -v '\(voice)' --rate '\(rate)' --write-media '\(outputFile)'
+        \(pythonPath) -m edge_tts -t '\(escapedText)' -v '\(voice)' --rate '\(rate)' --write-media '\(outputFile)'
         """
     }
     
     private func executeEdgeTTS(command: String, outputFile: URL) {
+        print("[EdgeTTS] Executing: \(command)")
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-c", command]
-        
+
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        
+
         currentProcess = process
-        
+
         do {
             try process.run()
             process.waitUntilExit()
-            
+
+            print("[EdgeTTS] Process exited with status: \(process.terminationStatus)")
+
             if process.terminationStatus == 0 {
                 // Play the generated audio
                 DispatchQueue.main.async { [weak self] in

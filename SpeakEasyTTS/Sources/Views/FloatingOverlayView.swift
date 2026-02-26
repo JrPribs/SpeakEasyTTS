@@ -18,7 +18,6 @@ struct FloatingOverlayView: View {
     @State private var autoReadDebounceTask: Task<Void, Never>?
     @State private var lastAutoReadSignature: String = ""
     @State private var lastAutoReadAt: Date = .distantPast
-    @State private var sheenOffset: CGFloat = -260
     
     private var collapsedWidth: CGFloat {
         appState.hasAccessibilityPermissions ? 50 : 100
@@ -61,7 +60,6 @@ struct FloatingOverlayView: View {
         .frame(width: shouldExpand ? expandedWidth : collapsedWidth, alignment: .leading)
         .background(glassBackground)
         .overlay(glassEdges)
-        .overlay(specularHighlight)
         .contentShape(Capsule())
         .opacity(shellOpacity)
         .scaleEffect(isHovering && !isDragging ? 1.013 : 1.0)
@@ -71,7 +69,6 @@ struct FloatingOverlayView: View {
         .animation(.easeInOut(duration: 0.18), value: hasSelection)
         .onAppear {
             floatingOverlay.updateSize(width: shouldExpand ? expandedWidth : collapsedWidth)
-            startSheenAnimation()
         }
         .onChange(of: shouldExpand) { _, expanded in
             floatingOverlay.updateSize(width: expanded ? expandedWidth : collapsedWidth)
@@ -116,78 +113,24 @@ struct FloatingOverlayView: View {
     
     private var glassBackground: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.06),
-                    Color.clear,
-                    Color.black.opacity(0.08)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            Color.black.opacity(0.82)
 
-            RadialGradient(
-                colors: [
-                    statusColor.opacity(0.10),
-                    Color.clear
-                ],
-                center: .leading,
-                startRadius: 10,
-                endRadius: shouldExpand ? 220 : 110
-            )
-            .opacity(isActiveState ? 1.0 : 0.6)
+            statusColor.opacity(isActiveState ? 0.10 : 0.05)
         }
         .clipShape(Capsule())
-        .shadow(color: statusColor.opacity(isActiveState ? 0.22 : 0.12), radius: 13, x: 0, y: 8)
+        .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 5)
     }
-    
+
     private var glassEdges: some View {
         Capsule()
-            .strokeBorder(
-                LinearGradient(
-                    colors: [Color.white.opacity(0.45), Color.white.opacity(0.15)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                lineWidth: 0.9
-            )
+            .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.8)
     }
-    
-    private var specularHighlight: some View {
-        Capsule()
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.clear,
-                                Color.white.opacity(shouldExpand ? 0.12 : 0.08),
-                                Color.clear
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 92, height: 58)
-                    .rotationEffect(.degrees(18))
-                    .offset(x: sheenOffset, y: -1)
-            )
-            .mask(Capsule())
-            .allowsHitTesting(false)
-    }
-    
+
     private var shellOpacity: Double {
         if isHovering || shouldExpand || isActiveState {
             return 1.0
         }
         return 0.94
-    }
-    
-    private func startSheenAnimation() {
-        sheenOffset = -260
-        withAnimation(.linear(duration: 6.6).repeatForever(autoreverses: false)) {
-            sheenOffset = 260
-        }
     }
     
     // MARK: - Drag
@@ -460,14 +403,14 @@ private struct OverlayGlassPillButtonStyle: ButtonStyle {
             .padding(.vertical, 5)
             .background {
                 Capsule()
-                    .fill(.ultraThinMaterial)
+                    .fill(Color.white.opacity(0.12))
                     .overlay(
                         Capsule()
                             .fill(accent.opacity(configuration.isPressed ? 0.18 : 0.10))
                     )
                     .overlay(
                         Capsule()
-                            .strokeBorder(Color.white.opacity(0.5), lineWidth: 0.8)
+                            .strokeBorder(Color.white.opacity(0.2), lineWidth: 0.8)
                     )
             }
             .shadow(color: accent.opacity(configuration.isPressed ? 0.08 : 0.18), radius: 6, x: 0, y: 3)
@@ -484,36 +427,18 @@ private struct OverlayGlassIconButtonStyle: ButtonStyle {
             .frame(width: 24, height: 24)
             .background {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(Color.white.opacity(0.12))
                     .overlay(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(accent.opacity(configuration.isPressed ? 0.20 : 0.10))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.5), lineWidth: 0.8)
+                            .strokeBorder(Color.white.opacity(0.2), lineWidth: 0.8)
                     )
             }
             .shadow(color: accent.opacity(configuration.isPressed ? 0.07 : 0.16), radius: 5, x: 0, y: 2)
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-    }
-}
-
-private struct OverlayVisualEffectView: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
-    
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .active
-        return view
-    }
-    
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
     }
 }
 

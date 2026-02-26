@@ -215,19 +215,36 @@ final class AppState {
             errorMessage = "No text to speak"
             return
         }
-        
+
+        let engine = settings.ttsEngine == .edgeTTS ? "Edge TTS" : "Native"
+        let voiceName = selectedVoice?.name ?? "default"
+        print("[TTS] Speaking \(text.count) chars via \(engine), voice: \(voiceName)")
+
         currentText = text
         errorMessage = nil
-        
+
         let request = SpeechRequest(
             text: text,
             voice: selectedVoice,
             settings: settings,
             source: .manualInput
         )
-        
+
         speechService.speak(request)
         playbackState = .playing
+    }
+
+    /// Test audio pipeline using native TTS directly
+    func testSpeech() {
+        print("[TTS] Running native speech test")
+        let testService = NativeSpeechService()
+        let request = SpeechRequest(
+            text: "Speech test successful.",
+            voice: nil,
+            settings: .default,
+            source: .manualInput
+        )
+        testService.speak(request)
     }
     
     /// Speak text from clipboard

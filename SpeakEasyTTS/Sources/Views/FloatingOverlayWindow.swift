@@ -113,28 +113,11 @@ final class FloatingOverlayController: ObservableObject {
             defer: false
         )
 
-        // Use NSVisualEffectView as the window's content view for proper behind-window blur
-        let effectView = NSVisualEffectView()
-        effectView.material = .hudWindow
-        effectView.blendingMode = .behindWindow
-        effectView.state = .active
-        effectView.wantsLayer = true
-
         let hostingView = NSHostingView(rootView: contentView)
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-        // Transparent background so the effect view shows through
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = .clear
 
-        effectView.addSubview(hostingView)
-        NSLayoutConstraint.activate([
-            hostingView.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
-            hostingView.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
-            hostingView.topAnchor.constraint(equalTo: effectView.topAnchor),
-            hostingView.bottomAnchor.constraint(equalTo: effectView.bottomAnchor)
-        ])
-
-        panel.contentView = effectView
+        panel.contentView = hostingView
         self.panel = panel
 
         positionAtBottomCenter()

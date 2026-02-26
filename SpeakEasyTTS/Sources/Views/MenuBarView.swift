@@ -115,15 +115,15 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                
+
                 Button("Read Selection") {
                     appState.speakSelectedText()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                
+
                 Spacer()
-                
+
                 Text("⌥S")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -131,6 +131,30 @@ struct MenuBarView: View {
                     .padding(.vertical, 2)
                     .background(Color(NSColor.tertiaryLabelColor).opacity(0.2))
                     .cornerRadius(4)
+            }
+
+            if let error = appState.errorMessage {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                    Spacer()
+                    Button {
+                        appState.errorMessage = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(6)
+                .background(Color.red.opacity(0.08))
+                .cornerRadius(6)
             }
         }
         .padding()

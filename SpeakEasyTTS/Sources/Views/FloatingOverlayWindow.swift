@@ -10,6 +10,7 @@
 
 import SwiftUI
 import AppKit
+import QuartzCore
 
 /// Controller class to manage the floating overlay panel
 final class FloatingOverlayController: ObservableObject {
@@ -113,11 +114,10 @@ final class FloatingOverlayController: ObservableObject {
             defer: false
         )
 
-        let hostingView = NSHostingView(rootView: contentView)
+        let hostingView = CapsuleHostingView(rootView: contentView)
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = .clear
         hostingView.layer?.isOpaque = false
-        hostingView.layer?.borderWidth = 0
 
         panel.contentView = hostingView
         self.panel = panel
@@ -216,6 +216,22 @@ final class FloatingOverlayPanel: NSPanel {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         // The SwiftUI view will handle hover state
+    }
+}
+
+// MARK: - Capsule-Masked Hosting View
+
+/// NSHostingView subclass that masks its layer to a capsule shape.
+/// Eliminates the faint rectangular background that NSHostingView renders by default.
+private final class CapsuleHostingView<Content: View>: NSHostingView<Content> {
+    override var isOpaque: Bool { false }
+
+    override func layout() {
+        super.layout()
+        let mask = CAShapeLayer()
+        let radius = bounds.height / 2
+        mask.path = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        layer?.mask = mask
     }
 }
 

@@ -116,6 +116,8 @@ final class FloatingOverlayController: ObservableObject {
         let hostingView = NSHostingView(rootView: contentView)
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = .clear
+        hostingView.layer?.isOpaque = false
+        hostingView.layer?.borderWidth = 0
 
         panel.contentView = hostingView
         self.panel = panel
@@ -168,7 +170,7 @@ final class FloatingOverlayPanel: NSPanel {
         // Transparent background - we'll draw our own pill shape
         self.backgroundColor = .clear
         self.isOpaque = false
-        self.hasShadow = true
+        self.hasShadow = false
         
         // Hide the titlebar completely
         self.titleVisibility = .hidden

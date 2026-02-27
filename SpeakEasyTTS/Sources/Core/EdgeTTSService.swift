@@ -66,17 +66,19 @@ final class EdgeTTSService: SpeechService {
         let ratePercent = Int((request.settings.rate - 0.5) * 100)
         let rateString = ratePercent >= 0 ? "+\(ratePercent)%" : "\(ratePercent)%"
         
-        // Build command
-        let command = buildEdgeTTSCommand(
-            text: request.text,
-            voice: voiceId,
-            rate: rateString,
-            outputFile: outputFile.path
-        )
-        
+        // Build arguments
+        let pythonPath = EdgeTTSService.findPython3Path()
+        let arguments = [
+            "-m", "edge_tts",
+            "-t", request.text,
+            "-v", voiceId,
+            "--rate", rateString,
+            "--write-media", outputFile.path
+        ]
+
         // Execute in background
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.executeEdgeTTS(command: command, outputFile: outputFile)
+            self?.executeEdgeTTS(pythonPath: pythonPath, arguments: arguments, outputFile: outputFile)
         }
         
         currentState = .playing
@@ -115,43 +117,49 @@ final class EdgeTTSService: SpeechService {
         let candidates = [
             "/opt/homebrew/bin/python3",   // Apple Silicon Homebrew
             "/usr/local/bin/python3",       // Intel Homebrew
+            "/opt/miniconda3/bin/python3",  // Conda
+            "/usr/bin/python3",             // System Python
         ]
 
         for path in candidates {
-            if FileManager.default.isExecutableFile(atPath: path) {
+            if FileManager.default.isExecutableFile(atPath: path) && hasEdgeTTS(pythonPath: path) {
                 cachedPython3Path = path
-                print("[EdgeTTS] Found python3 at: \(path)")
+                print("[EdgeTTS] Found python3 with edge-tts at: \(path)")
                 return path
             }
         }
 
         // Fall back to PATH resolution via shell
-        print("[EdgeTTS] No python3 found at known paths, falling back to PATH resolution")
+        print("[EdgeTTS] No python3 with edge-tts found at known paths, falling back to PATH resolution")
         cachedPython3Path = "python3"
         return "python3"
     }
 
+    /// Check if a given python3 binary has the edge-tts module installed
+    static func hasEdgeTTS(pythonPath: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: pythonPath)
+        process.arguments = ["-c", "import edge_tts"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Private Methods
 
-    private func buildEdgeTTSCommand(text: String, voice: String, rate: String, outputFile: String) -> String {
-        // Escape text for shell
-        let escapedText = text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "'", with: "\\'")
-
-        let pythonPath = EdgeTTSService.findPython3Path()
-        return """
-        \(pythonPath) -m edge_tts -t '\(escapedText)' -v '\(voice)' --rate '\(rate)' --write-media '\(outputFile)'
-        """
-    }
-    
-    private func executeEdgeTTS(command: String, outputFile: URL) {
-        print("[EdgeTTS] Executing: \(command)")
+    private func executeEdgeTTS(pythonPath: String, arguments: [String], outputFile: URL) {
+        print("[EdgeTTS] Executing: \(pythonPath) \(arguments.joined(separator: " "))")
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-c", command]
+        process.executableURL = URL(fileURLWithPath: pythonPath)
+        process.arguments = arguments
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -166,14 +174,13 @@ final class EdgeTTSService: SpeechService {
             print("[EdgeTTS] Process exited with status: \(process.terminationStatus)")
 
             if process.terminationStatus == 0 {
-                // Play the generated audio
                 DispatchQueue.main.async { [weak self] in
                     self?.playAudioFile(outputFile)
                 }
             } else {
                 let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
                 let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-                
+
                 DispatchQueue.main.async { [weak self] in
                     self?.onError?(EdgeTTSError.synthesisFailure(errorMessage))
                     self?.currentState = .idle
@@ -246,17 +253,17 @@ private class AudioPlayerDelegate: NSObject, AVAudioPlayerDelegate {
 // MARK: - Edge TTS Errors
 
 enum EdgeTTSError: LocalizedError {
-    case nodeNotInstalled
-    case packageNotInstalled
+    case pythonNotInstalled
+    case edgeTTSNotInstalled
     case synthesisFailure(String)
     case networkError
-    
+
     var errorDescription: String? {
         switch self {
-        case .nodeNotInstalled:
-            return "Node.js is not installed. Please install Node.js to use Edge TTS."
-        case .packageNotInstalled:
-            return "node-edge-tts is not installed. Run: npm install -g node-edge-tts"
+        case .pythonNotInstalled:
+            return "Python 3 is not installed. Please install Python 3 to use Edge TTS."
+        case .edgeTTSNotInstalled:
+            return "edge-tts is not installed. Run: pip3 install edge-tts"
         case .synthesisFailure(let message):
             return "Edge TTS synthesis failed: \(message)"
         case .networkError:
@@ -268,21 +275,9 @@ enum EdgeTTSError: LocalizedError {
 // MARK: - Edge TTS Availability Check
 
 extension EdgeTTSService {
-    /// Check if Edge TTS is available (Node.js and package installed)
+    /// Check if Edge TTS is available (Python 3 with edge-tts module installed)
     static func isAvailable() -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = ["npx"]
-        
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
-        } catch {
-            return false
-        }
+        let pythonPath = findPython3Path()
+        return hasEdgeTTS(pythonPath: pythonPath)
     }
 }

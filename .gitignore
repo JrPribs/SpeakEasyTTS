@@ -11,3 +11,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Tool/debug logs
+firebase-debug.log

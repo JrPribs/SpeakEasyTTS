@@ -19,6 +19,8 @@ final class FloatingOverlayController: ObservableObject {
     private var panel: FloatingOverlayPanel?
     private var dragStartMouseLocation: NSPoint?
     private var dragStartPanelOrigin: NSPoint?
+    private var screenTrackingTimer: Timer?
+    private var currentScreenID: UInt32?
     @Published var isVisible: Bool = false
     
     private init() {}
@@ -31,10 +33,12 @@ final class FloatingOverlayController: ObservableObject {
         
         panel?.orderFront(nil)
         isVisible = true
+        startScreenTracking()
     }
     
     /// Hide the floating overlay
     func hide() {
+        stopScreenTracking()
         panel?.orderOut(nil)
         isVisible = false
     }
@@ -48,18 +52,27 @@ final class FloatingOverlayController: ObservableObject {
         }
     }
     
-    /// Position the panel at the bottom center of the screen
-    func positionAtBottomCenter() {
+    /// Position the panel at the bottom center of a screen
+    func positionAtBottomCenter(of screen: NSScreen? = nil, animated: Bool = false) {
         guard let panel = panel,
-              let screen = NSScreen.main else { return }
-        
-        let screenFrame = screen.visibleFrame
+              let targetScreen = screen ?? NSScreen.main else { return }
+
+        let screenFrame = targetScreen.visibleFrame
         let panelFrame = panel.frame
-        
+
         let x = screenFrame.midX - (panelFrame.width / 2)
         let y = screenFrame.minY + 20 // 20pt from bottom
-        
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        let origin = NSPoint(x: x, y: y)
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.25
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                panel.animator().setFrameOrigin(origin)
+            }
+        } else {
+            panel.setFrameOrigin(origin)
+        }
     }
     
     func beginDrag(at screenLocation: NSPoint) {
@@ -104,6 +117,46 @@ final class FloatingOverlayController: ObservableObject {
         panel.setFrame(frame, display: true)
     }
     
+    // MARK: - Screen Tracking
+
+    private func displayID(for screen: NSScreen) -> UInt32? {
+        screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32
+    }
+
+    private func screenContainingMouse() -> NSScreen? {
+        let mouseLocation = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+    }
+
+    private func startScreenTracking() {
+        screenTrackingTimer?.invalidate()
+
+        guard let mouseScreen = screenContainingMouse() else { return }
+        currentScreenID = displayID(for: mouseScreen)
+
+        screenTrackingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.checkForScreenChange()
+        }
+    }
+
+    private func stopScreenTracking() {
+        screenTrackingTimer?.invalidate()
+        screenTrackingTimer = nil
+        currentScreenID = nil
+    }
+
+    private func checkForScreenChange() {
+        // Don't fight manual dragging
+        guard dragStartMouseLocation == nil,
+              isVisible,
+              let mouseScreen = screenContainingMouse(),
+              let mouseDisplayID = displayID(for: mouseScreen),
+              mouseDisplayID != currentScreenID else { return }
+
+        currentScreenID = mouseDisplayID
+        positionAtBottomCenter(of: mouseScreen, animated: true)
+    }
+
     private func createPanel() {
         let contentView = FloatingOverlayView()
             .environment(AppState.shared)
@@ -122,7 +175,7 @@ final class FloatingOverlayController: ObservableObject {
         panel.contentView = hostingView
         self.panel = panel
 
-        positionAtBottomCenter()
+        positionAtBottomCenter(of: screenContainingMouse())
     }
 }
 

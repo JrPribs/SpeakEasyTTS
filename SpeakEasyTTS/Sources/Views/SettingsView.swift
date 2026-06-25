@@ -53,6 +53,19 @@ struct GeneralSettingsTab: View {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                 Toggle("Show in Dock", isOn: $showInDock)
             }
+
+            Section("Dictation") {
+                HStack {
+                    Text("Mode")
+                    Spacer()
+                    Label("Verbatim", systemImage: "text.quote")
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("Dictation inserts the recognized words directly, with no AI rewrite or cleanup step.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             
             Section("TTS Engine") {
                 Picker("Engine", selection: Binding(
@@ -324,15 +337,9 @@ struct ShortcutsTab: View {
                 }
                 
                 HStack {
-                    Text("Read Clipboard")
+                    Text("Toggle Dictation")
                     Spacer()
-                    KeyboardShortcutView(shortcut: "⌥V")
-                }
-                
-                HStack {
-                    Text("Open Input Window")
-                    Spacer()
-                    KeyboardShortcutView(shortcut: "⌥T")
+                    KeyboardShortcutView(shortcut: "⌥D")
                 }
             }
             
@@ -363,7 +370,7 @@ struct ShortcutsTab: View {
                     }
                 }
                 
-                Text("Global shortcuts and text selection detection require Accessibility permissions.")
+                Text("Global shortcuts, text selection detection, and dictation insertion require Accessibility permissions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 
@@ -397,11 +404,11 @@ struct AboutTab: View {
         VStack(spacing: 20) {
             Spacer()
             
-            Image(systemName: "speaker.wave.3.fill")
+            Image(systemName: "mic.and.signal.meter.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(.blue)
             
-            Text("SpeakEasy TTS")
+            Text("SpeakEasy Flow")
                 .font(.title)
                 .fontWeight(.bold)
             
@@ -409,7 +416,7 @@ struct AboutTab: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             
-            Text("A lightweight menu bar app for text-to-speech")
+            Text("A lightweight menu bar app for dictation and text-to-speech")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -422,7 +429,8 @@ struct AboutTab: View {
                     .font(.headline)
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    FeatureRow(icon: "keyboard", text: "Global hotkey (⌥S)")
+                    FeatureRow(icon: "mic.fill", text: "Verbatim dictation (⌥D)")
+                    FeatureRow(icon: "keyboard", text: "Read selected text (⌥S)")
                     FeatureRow(icon: "doc.on.clipboard", text: "Read from clipboard")
                     FeatureRow(icon: "text.cursor", text: "Read selected text")
                     FeatureRow(icon: "waveform", text: "Auto-read on selection")

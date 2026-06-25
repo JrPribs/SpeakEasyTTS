@@ -363,6 +363,50 @@ final class ClipboardService {
         }
     }
 
+    /// Paste text into the user's last focused app, then restore the previous pasteboard contents.
+    func insertTextIntoLastFocusedApp(_ text: String, completion: @escaping (Bool) -> Void) {
+        guard !text.isEmpty else {
+            completion(false)
+            return
+        }
+
+        let appBundleID = Bundle.main.bundleIdentifier
+        let frontmostApp = NSWorkspace.shared.frontmostApplication
+        let targetApp: NSRunningApplication?
+
+        if let frontmostApp, frontmostApp.bundleIdentifier != appBundleID {
+            lastExternalApp = frontmostApp
+            targetApp = frontmostApp
+        } else if let lastExternalApp, !lastExternalApp.isTerminated {
+            targetApp = lastExternalApp
+        } else {
+            completion(false)
+            return
+        }
+
+        let previousItems = makePasteboardSnapshot()
+
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+
+        let didActivate = targetApp?.activate(options: []) ?? false
+        let pasteDelay: TimeInterval = didActivate ? 0.15 : 0.05
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + pasteDelay) { [weak self] in
+            guard let self else {
+                completion(false)
+                return
+            }
+
+            self.postCommandKey(0x09) // V
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                self.restorePasteboardSnapshot(previousItems)
+                completion(true)
+            }
+        }
+    }
+
     /// Check if accessibility permissions are granted
     func hasAccessibilityPermissions() -> Bool {
         return AXIsProcessTrusted()
@@ -383,18 +427,7 @@ final class ClipboardService {
         // Clear clipboard
         pasteboard.clearContents()
         
-        // Simulate Cmd+C using CGEvent
-        let source = CGEventSource(stateID: .hidSystemState)
-        
-        // Key down
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true) // 'C' key
-        keyDown?.flags = .maskCommand
-        keyDown?.post(tap: .cghidEventTap)
-        
-        // Key up
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
-        keyUp?.flags = .maskCommand
-        keyUp?.post(tap: .cghidEventTap)
+        postCommandKey(0x08) // C
         
         // Wait for the copy to complete, then check clipboard
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -459,5 +492,40 @@ final class ClipboardService {
         
         var cfRange = CFRange()
         return AXValueGetValue(range as! AXValue, .cfRange, &cfRange) && cfRange.length > 0
+    }
+
+    private func postCommandKey(_ keyCode: CGKeyCode) {
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+        keyDown?.flags = .maskCommand
+        keyDown?.post(tap: .cghidEventTap)
+
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        keyUp?.flags = .maskCommand
+        keyUp?.post(tap: .cghidEventTap)
+    }
+
+    private func makePasteboardSnapshot() -> [NSPasteboardItem] {
+        pasteboard.pasteboardItems?.map { original in
+            let copy = NSPasteboardItem()
+
+            for type in original.types {
+                if let data = original.data(forType: type) {
+                    copy.setData(data, forType: type)
+                } else if let string = original.string(forType: type) {
+                    copy.setString(string, forType: type)
+                }
+            }
+
+            return copy
+        } ?? []
+    }
+
+    private func restorePasteboardSnapshot(_ items: [NSPasteboardItem]) {
+        pasteboard.clearContents()
+
+        guard !items.isEmpty else { return }
+        pasteboard.writeObjects(items)
     }
 }

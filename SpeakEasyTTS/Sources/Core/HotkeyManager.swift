@@ -6,31 +6,36 @@ import Carbon
 import AppKit
 
 /// Manages global keyboard shortcuts using Carbon Event Manager
-/// Default hotkey: Cmd+Shift+S to read selected text
+/// Default hotkeys: Option+S to read selected text, Option+D to toggle dictation.
 final class HotkeyManager {
     // MARK: - Singleton
     static let shared = HotkeyManager()
     
     // MARK: - Properties
     private var eventHandler: EventHandlerRef?
-    private var hotkeyRef: EventHotKeyRef?
-    private var hotkeyID = EventHotKeyID()
-    
-    // Hotkey configuration - Option+S (⌥S)
-    private let defaultKeyCode: UInt32 = 1  // 'S' key
-    private let defaultModifiers: UInt32 = UInt32(optionKey)
-    
-    // Callback for when hotkey is pressed
-    var onHotkeyPressed: (() -> Void)?
+    private var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
+    private let hotkeySignature = OSType(0x53455454) // "SETT"
+
+    private enum HotkeyAction: UInt32 {
+        case readSelection = 1
+        case toggleDictation = 2
+    }
+
+    private struct HotkeyDefinition {
+        let action: HotkeyAction
+        let keyCode: UInt32
+        let modifiers: UInt32
+        let displayName: String
+    }
+
+    private let hotkeys: [HotkeyDefinition] = [
+        HotkeyDefinition(action: .readSelection, keyCode: 1, modifiers: UInt32(optionKey), displayName: "Option+S / ⌥S"),
+        HotkeyDefinition(action: .toggleDictation, keyCode: 2, modifiers: UInt32(optionKey), displayName: "Option+D / ⌥D")
+    ]
     
     // MARK: - Initialization
     
-    private init() {
-        // Set up default callback
-        onHotkeyPressed = { [weak self] in
-            self?.handleHotkey()
-        }
-    }
+    private init() {}
     
     deinit {
         unregisterGlobalHotkey()
@@ -38,34 +43,52 @@ final class HotkeyManager {
     
     // MARK: - Public Methods
     
-    /// Register the global hotkey (Cmd+Shift+S)
+    /// Register global hotkeys.
     func registerGlobalHotkey() {
-        // Unregister existing hotkey to prevent double-registration
-        if hotkeyRef != nil {
+        if !hotkeyRefs.isEmpty {
             unregisterGlobalHotkey()
         }
 
-        // Check accessibility permissions first
         guard AXIsProcessTrusted() else {
             print("HotkeyManager: Accessibility permissions not granted")
             return
         }
-        
-        // Set up hotkey ID
-        hotkeyID.signature = OSType(0x53455454) // "SETT" in hex
-        hotkeyID.id = 1
-        
-        // Set up event type spec
+
+        guard installEventHandlerIfNeeded() else { return }
+
+        for hotkey in hotkeys {
+            registerHotkey(hotkey)
+        }
+    }
+
+    /// Unregister global hotkeys.
+    func unregisterGlobalHotkey() {
+        for hotkeyRef in hotkeyRefs.values {
+            UnregisterEventHotKey(hotkeyRef)
+        }
+        hotkeyRefs.removeAll()
+
+        if let eventHandler = eventHandler {
+            RemoveEventHandler(eventHandler)
+            self.eventHandler = nil
+        }
+
+        print("HotkeyManager: Global hotkeys unregistered")
+    }
+
+    // MARK: - Private Methods
+
+    private func installEventHandlerIfNeeded() -> Bool {
+        guard eventHandler == nil else { return true }
+
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
-        
-        // Install event handler
+
         let status = InstallEventHandler(
             GetApplicationEventTarget(),
-            { (_, event, userData) -> OSStatus in
-                // Get the hotkey ID from the event
+            { _, event, userData -> OSStatus in
                 var hkID = EventHotKeyID()
                 GetEventParameter(
                     event,
@@ -76,12 +99,12 @@ final class HotkeyManager {
                     nil,
                     &hkID
                 )
-                
-                // Call the handler
-                if let manager = userData?.assumingMemoryBound(to: HotkeyManager.self).pointee {
-                    manager.onHotkeyPressed?()
+
+                if let userData {
+                    let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+                    manager.handleHotkey(id: hkID.id)
                 }
-                
+
                 return noErr
             },
             1,
@@ -92,49 +115,47 @@ final class HotkeyManager {
         
         guard status == noErr else {
             print("HotkeyManager: Failed to install event handler: \(status)")
-            return
+            return false
         }
-        
-        // Register the hotkey
-        let registerStatus = RegisterEventHotKey(
-            defaultKeyCode,
-            defaultModifiers,
+
+        return true
+    }
+
+    private func registerHotkey(_ hotkey: HotkeyDefinition) {
+        var hotkeyID = EventHotKeyID()
+        hotkeyID.signature = hotkeySignature
+        hotkeyID.id = hotkey.action.rawValue
+
+        var hotkeyRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            hotkey.keyCode,
+            hotkey.modifiers,
             hotkeyID,
             GetApplicationEventTarget(),
             0,
             &hotkeyRef
         )
-        
-        if registerStatus == noErr {
-            print("HotkeyManager: Global hotkey registered (Option+S / ⌥S)")
+
+        if status == noErr, let hotkeyRef {
+            hotkeyRefs[hotkey.action.rawValue] = hotkeyRef
+            print("HotkeyManager: Global hotkey registered (\(hotkey.displayName))")
         } else {
-            print("HotkeyManager: Failed to register hotkey: \(registerStatus)")
+            print("HotkeyManager: Failed to register \(hotkey.displayName): \(status)")
         }
     }
-    
-    /// Unregister the global hotkey
-    func unregisterGlobalHotkey() {
-        if let hotkeyRef = hotkeyRef {
-            UnregisterEventHotKey(hotkeyRef)
-            self.hotkeyRef = nil
-        }
-        
-        if let eventHandler = eventHandler {
-            RemoveEventHandler(eventHandler)
-            self.eventHandler = nil
-        }
-        
-        print("HotkeyManager: Global hotkey unregistered")
-    }
-    
-    // MARK: - Private Methods
-    
-    /// Handle hotkey press - read selected text
-    private func handleHotkey() {
-        print("HotkeyManager: Hotkey pressed")
-        
+
+    private func handleHotkey(id: UInt32) {
         DispatchQueue.main.async {
-            AppState.shared.speakSelectedText()
+            switch HotkeyAction(rawValue: id) {
+            case .readSelection:
+                print("HotkeyManager: Read selection hotkey pressed")
+                AppState.shared.speakSelectedText()
+            case .toggleDictation:
+                print("HotkeyManager: Dictation hotkey pressed")
+                AppState.shared.toggleDictation()
+            case .none:
+                print("HotkeyManager: Unknown hotkey id \(id)")
+            }
         }
     }
 }
@@ -179,14 +200,18 @@ final class NSEventHotkeyManager {
     
     /// Handle key event
     private func handleKeyEvent(_ event: NSEvent) {
-        // Check for Option+S (⌥S)
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let isOptionOnly = modifiers == .option
-        let isKeyS = event.keyCode == 1 // 'S' key
+        let isKeyS = event.keyCode == 1 // S
+        let isKeyD = event.keyCode == 2 // D
         
         if isOptionOnly && isKeyS {
             DispatchQueue.main.async {
                 AppState.shared.speakSelectedText()
+            }
+        } else if isOptionOnly && isKeyD {
+            DispatchQueue.main.async {
+                AppState.shared.toggleDictation()
             }
         }
     }

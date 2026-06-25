@@ -20,7 +20,7 @@ struct SpeakEasyApp: App {
             MenuBarView()
                 .environment(appState)
         } label: {
-            Image(systemName: appState.playbackState == .playing ? "speaker.wave.3.fill" : "speaker.wave.2")
+            Image(systemName: menuBarIcon)
                 .symbolRenderingMode(.hierarchical)
         }
         .menuBarExtraStyle(.window)
@@ -39,6 +39,14 @@ struct SpeakEasyApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+    }
+
+    private var menuBarIcon: String {
+        if appState.dictationState != .idle {
+            return appState.dictationState.systemImage
+        }
+
+        return appState.playbackState == .playing ? "speaker.wave.3.fill" : "speaker.wave.2"
     }
 }
 
@@ -68,6 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // Clean up speech synthesis
         AppState.shared.speechService.stop()
+        AppState.shared.cancelDictation()
         hotkeyManager?.unregisterGlobalHotkey()
     }
     

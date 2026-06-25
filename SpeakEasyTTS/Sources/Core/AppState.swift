@@ -22,6 +22,8 @@ final class AppState {
     var errorMessage: String?
     var isInputWindowVisible: Bool = false
     var hasSelectedText: Bool = false
+    var dictationState: DictationState = .idle
+    var dictationTranscript: String = ""
     
     // MARK: - Accessibility Permissions
     var hasAccessibilityPermissions: Bool = false
@@ -38,9 +40,11 @@ final class AppState {
     let voiceManager: VoiceManager
     let clipboardService: ClipboardService
     let claudeCodeService = ClaudeCodeService()
+    private let dictationService = DictationService()
     
     // MARK: - Private
     private var cancellables = Set<AnyCancellable>()
+    private var hasInsertedCurrentDictation = false
     
     // MARK: - Initialization
     
@@ -73,6 +77,7 @@ final class AppState {
         
         // Set up speech service delegate
         setupSpeechServiceCallbacks()
+        setupDictationServiceCallbacks()
         
         // Restore selected voice
         if let voiceId = settings.selectedVoiceId,
@@ -300,6 +305,48 @@ final class AppState {
             resume()
         }
     }
+
+    // MARK: - Dictation Control
+
+    /// Toggle native speech-to-text dictation. Completed text is pasted into the last focused app.
+    func toggleDictation() {
+        switch dictationState {
+        case .idle:
+            startDictation()
+        case .authorizing, .recording:
+            stopDictationAndInsert()
+        }
+    }
+
+    /// Start verbatim dictation without AI rewriting or cleanup.
+    func startDictation() {
+        guard dictationState == .idle else { return }
+
+        if playbackState != .idle {
+            stop()
+        }
+
+        clipboardService.trackFrontmostApp()
+        dictationTranscript = ""
+        hasInsertedCurrentDictation = false
+        errorMessage = nil
+
+        dictationService.start()
+    }
+
+    /// Stop dictation and insert the captured transcript into the focused app.
+    func stopDictationAndInsert() {
+        let textToInsert = dictationTranscript
+        dictationService.stop()
+        insertDictatedText(textToInsert)
+    }
+
+    /// Stop dictation without inserting text.
+    func cancelDictation() {
+        dictationService.stop()
+        dictationTranscript = ""
+        hasInsertedCurrentDictation = false
+    }
     
     // MARK: - Settings
     
@@ -466,6 +513,54 @@ final class AppState {
             DispatchQueue.main.async {
                 self?.errorMessage = error.localizedDescription
                 self?.playbackState = .idle
+            }
+        }
+    }
+
+    private func setupDictationServiceCallbacks() {
+        dictationService.onStateChange = { [weak self] state in
+            DispatchQueue.main.async {
+                self?.dictationState = state
+            }
+        }
+
+        dictationService.onTranscript = { [weak self] transcript, isFinal in
+            DispatchQueue.main.async {
+                guard let self else { return }
+
+                self.dictationTranscript = transcript
+
+                if isFinal {
+                    self.insertDictatedText(transcript)
+                }
+            }
+        }
+
+        dictationService.onError = { [weak self] error in
+            DispatchQueue.main.async {
+                self?.errorMessage = error.localizedDescription
+                self?.dictationState = .idle
+            }
+        }
+    }
+
+    private func insertDictatedText(_ text: String) {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            errorMessage = "No dictation text captured."
+            return
+        }
+        guard !hasInsertedCurrentDictation else { return }
+
+        hasInsertedCurrentDictation = true
+        clipboardService.insertTextIntoLastFocusedApp(normalized) { [weak self] didInsert in
+            guard let self else { return }
+
+            if didInsert {
+                self.dictationTranscript = normalized
+            } else {
+                self.errorMessage = "Could not insert dictated text. Click into a text field and try again."
+                self.hasInsertedCurrentDictation = false
             }
         }
     }

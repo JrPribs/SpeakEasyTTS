@@ -22,7 +22,7 @@ struct FloatingOverlayView: View {
     private var collapsedWidth: CGFloat {
         appState.hasAccessibilityPermissions ? 50 : 100
     }
-    private let expandedWidth: CGFloat = 298
+    private let expandedWidth: CGFloat = 330
     
     private var hasSelection: Bool {
         appState.hasSelectedText
@@ -37,7 +37,7 @@ struct FloatingOverlayView: View {
     }
     
     private var isActiveState: Bool {
-        hasSelection || isAutoReading || appState.playbackState != .idle
+        hasSelection || isAutoReading || appState.dictationState != .idle || appState.playbackState != .idle
     }
     
     var body: some View {
@@ -154,6 +154,16 @@ struct FloatingOverlayView: View {
     // MARK: - Actions
     
     private func handlePrimaryTap() {
+        if appState.dictationState == .recording {
+            appState.stopDictationAndInsert()
+            return
+        }
+
+        if appState.dictationState == .authorizing {
+            appState.cancelDictation()
+            return
+        }
+
         if !appState.hasAccessibilityPermissions {
             appState.openAccessibilitySettings()
             return
@@ -276,6 +286,16 @@ struct FloatingOverlayView: View {
     
     private var expandedControls: some View {
         HStack(spacing: 8) {
+            Button {
+                appState.toggleDictation()
+            } label: {
+                Image(systemName: appState.dictationState == .idle ? "mic.fill" : "stop.fill")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .red))
+            .disabled(!appState.hasAccessibilityPermissions)
+            .help(appState.dictationState == .idle ? "Start dictation" : "Stop dictation and insert")
+
             Button("Read") {
                 appState.speakSelectedText()
             }
@@ -343,6 +363,12 @@ struct FloatingOverlayView: View {
         if !appState.hasAccessibilityPermissions {
             return Color(nsColor: .systemOrange)
         }
+        if appState.dictationState == .recording {
+            return Color(nsColor: .systemRed)
+        }
+        if appState.dictationState == .authorizing {
+            return Color(nsColor: .systemIndigo)
+        }
         if isAutoReading {
             return Color(nsColor: .systemPurple)
         }
@@ -364,6 +390,12 @@ struct FloatingOverlayView: View {
         if !appState.hasAccessibilityPermissions {
             return "lock.fill"
         }
+        if appState.dictationState == .recording {
+            return "mic.fill"
+        }
+        if appState.dictationState == .authorizing {
+            return "lock.open"
+        }
         if isAutoReading {
             return "waveform"
         }
@@ -384,6 +416,12 @@ struct FloatingOverlayView: View {
     private var primaryButtonHelpText: String {
         if !appState.hasAccessibilityPermissions {
             return "Open Accessibility Settings"
+        }
+        if appState.dictationState == .recording {
+            return "Stop dictation and insert text"
+        }
+        if appState.dictationState == .authorizing {
+            return "Cancel dictation"
         }
         if hasSelection {
             return "Read selected text"

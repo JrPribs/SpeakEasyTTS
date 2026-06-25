@@ -79,7 +79,7 @@ cat > "$CONTENTS_DIR/Info.plist" << EOF
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>SpeakEasy TTS</string>
+    <string>SpeakEasy Flow</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -98,6 +98,10 @@ cat > "$CONTENTS_DIR/Info.plist" << EOF
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>SpeakEasy Flow uses the microphone for local dictation when you start speech-to-text.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>SpeakEasy Flow uses speech recognition to turn your spoken words into text without AI rewriting.</string>
 </dict>
 </plist>
 EOF

@@ -4,6 +4,31 @@
 import Foundation
 import AVFoundation
 
+// MARK: - DictationState
+
+/// Represents the current state of speech-to-text capture.
+enum DictationState: Equatable {
+    case idle
+    case authorizing
+    case recording
+
+    var displayName: String {
+        switch self {
+        case .idle: return "Dictation Ready"
+        case .authorizing: return "Requesting Access"
+        case .recording: return "Listening"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .idle: return "mic"
+        case .authorizing: return "lock.open"
+        case .recording: return "mic.fill"
+        }
+    }
+}
+
 // MARK: - PlaybackState
 
 /// Represents the current state of speech playback

@@ -1,6 +1,6 @@
-# SpeakEasy TTS
+# SpeakEasy Flow
 
-A lightweight, fast macOS menu bar app for text-to-speech. Read selected text from any app, paste text manually, or read from clipboard with a simple hotkey.
+A lightweight macOS menu bar app for verbatim dictation and text-to-speech. Dictate into the focused app with minimal rewriting, or read selected text back from your screen.
 
 ![macOS 14.0+](https://img.shields.io/badge/macOS-14.0+-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/Swift-5.9+-orange.svg)
@@ -8,8 +8,10 @@ A lightweight, fast macOS menu bar app for text-to-speech. Read selected text fr
 
 ## Features
 
-- **🎯 Global Hotkey** - Press `Cmd+Shift+S` to read selected text from any application
+- **🎯 Global Hotkeys** - Press `Option+D` for dictation or `Option+S` to read selected text
+- **🎤 Verbatim Dictation** - Native speech-to-text inserts recognized words without an AI rewrite step
 - **📋 Clipboard Reading** - Instantly read text from your clipboard
+- **🖥️ Screen Readback** - Read selected text from other apps through the macOS Accessibility API
 - **📝 Floating Window** - Manual text input with a clean, minimal interface
 - **🎙️ Multiple Voices** - Choose from all available macOS system voices
 - **⚡ Speed Control** - Adjust reading speed from 0.2x to 2.0x
@@ -21,7 +23,10 @@ A lightweight, fast macOS menu bar app for text-to-speech. Read selected text fr
 
 ```
 ┌─────────────────────────────────────┐
-│  🔊 SpeakEasy TTS                   │
+│  🎤 SpeakEasy Flow                  │
+│  ─────────────────────────────────  │
+│  Verbatim Dictation          ⌥D     │
+│  [Start]                            │
 │  ─────────────────────────────────  │
 │  [Enter text to speak...]      [▶]  │
 │                                     │
@@ -40,7 +45,8 @@ A lightweight, fast macOS menu bar app for text-to-speech. Read selected text fr
 - macOS 14.0 (Sonoma) or later
 - Xcode 15.0+ (for building from source)
 - Swift 5.9+
-- Accessibility permissions (for global hotkey)
+- Accessibility permissions (for global hotkeys, selected-text readback, and dictation insertion)
+- Microphone and Speech Recognition permissions (for dictation)
 
 ## Installation
 
@@ -49,7 +55,7 @@ A lightweight, fast macOS menu bar app for text-to-speech. Read selected text fr
 1. Download the latest `.app` from the Releases page
 2. Move `SpeakEasyTTS.app` to your Applications folder
 3. Right-click → Open (first time only, to bypass Gatekeeper)
-4. Grant Accessibility permissions when prompted
+4. Grant Accessibility, Microphone, and Speech Recognition permissions when prompted
 
 ### Option 2: Build from Source
 
@@ -72,14 +78,21 @@ open /Applications/SpeakEasyTTS.app
 
 ### Basic Usage
 
-1. Click the speaker icon (🔊) in your menu bar
+1. Click the SpeakEasy icon in your menu bar
 2. Type or paste text in the input field
 3. Click Play or press `Cmd+Return`
+
+### Dictate Into Any App
+
+1. Click into a text field in another app
+2. Press `Option+D`
+3. Speak normally
+4. Press `Option+D` again to stop and insert the recognized text
 
 ### Read Selected Text
 
 1. Select text in any application
-2. Press `Cmd+Shift+S`
+2. Press `Option+S`
 3. SpeakEasy will read the selected text aloud
 
 ### Read from Clipboard
@@ -91,7 +104,8 @@ open /Applications/SpeakEasyTTS.app
 
 | Shortcut | Action |
 |----------|--------|
-| `Cmd+Shift+S` | Read selected text (global) |
+| `Option+D` | Toggle dictation (global) |
+| `Option+S` | Read selected text (global) |
 | `Cmd+Return` | Play text in input window |
 | `Space` | Pause/Resume (when focused) |
 | `Escape` | Stop playback |
@@ -123,6 +137,10 @@ Choose between:
 - **Native (macOS)** - Uses built-in AVSpeechSynthesizer. Works offline.
 - **Edge TTS** - Uses Microsoft's neural voices. Higher quality, requires internet.
 
+### Dictation Mode
+
+Dictation defaults to verbatim mode. The app uses Apple's Speech framework result segments directly and disables automatic punctuation where supported, so it does not run dictated text through an LLM cleanup step.
+
 ## Project Structure
 
 ```
@@ -135,6 +153,7 @@ SpeakEasyTTS/
     │   └── SpeakEasyApp.swift     # App entry point
     ├── Core/
     │   ├── AppState.swift         # Central state management
+    │   ├── DictationService.swift # Native speech-to-text capture
     │   ├── SpeechService.swift    # TTS protocol & native impl
     │   ├── EdgeTTSService.swift   # Edge TTS implementation
     │   └── HotkeyManager.swift    # Global keyboard shortcuts
@@ -156,21 +175,19 @@ The app follows a clean architecture with:
 
 - **@Observable AppState** - Central state management using Swift's new observation framework
 - **Protocol-based Services** - SpeechService protocol allows swapping TTS engines
+- **Native Dictation Service** - Speech framework + AVAudioEngine speech-to-text capture
 - **SwiftUI Views** - Modern declarative UI with menu bar extra
-- **Carbon Events** - Global hotkey registration for system-wide shortcuts
+- **Carbon Events** - Global hotkey registration for readback and dictation shortcuts
 
 ## Edge TTS Setup (Optional)
 
 For higher quality neural voices:
 
 ```bash
-# Install Node.js (if not installed)
-brew install node
+# Install Edge TTS for Python
+python3 -m pip install edge-tts
 
-# Install node-edge-tts globally
-npm install -g node-edge-tts
-
-# Enable in SpeakEasy Settings → General → TTS Engine → Edge TTS
+# Enable in SpeakEasy Settings -> General -> TTS Engine -> Edge TTS
 ```
 
 ## Troubleshooting
@@ -186,6 +203,12 @@ npm install -g node-edge-tts
 1. Check system volume
 2. Verify the selected voice is installed
 3. Try a different voice
+
+### Dictation Not Starting
+
+1. Open System Settings → Privacy & Security → Microphone and enable SpeakEasyTTS
+2. Open System Settings → Privacy & Security → Speech Recognition and enable SpeakEasyTTS
+3. Run the bundled app from `build/release/SpeakEasyTTS.app`; `swift run` does not carry the generated privacy strings
 
 ### App Not Starting
 
@@ -207,11 +230,11 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-- Apple's AVFoundation framework
+- Apple's AVFoundation and Speech frameworks
 - Microsoft Edge TTS service (via node-edge-tts)
 - SwiftUI and the new @Observable macro
 - The macOS developer community
 
 ---
 
-Made with ❤️ for accessibility and productivity
+Made for accessibility and productivity

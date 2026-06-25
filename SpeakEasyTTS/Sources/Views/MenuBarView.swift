@@ -17,6 +17,11 @@ struct MenuBarView: View {
             headerSection
             
             Divider()
+
+            // Speech-to-text dictation
+            dictationSection
+
+            Divider()
             
             // Quick text input
             quickInputSection
@@ -60,15 +65,15 @@ struct MenuBarView: View {
     
     private var headerSection: some View {
         HStack {
-            Image(systemName: appState.playbackState.systemImage)
+            Image(systemName: headerIcon)
                 .font(.title2)
                 .foregroundStyle(.secondary)
             
             VStack(alignment: .leading, spacing: 2) {
-                Text("SpeakEasy TTS")
+                Text("SpeakEasy Flow")
                     .font(.headline)
                 
-                Text(appState.playbackState.displayName)
+                Text(headerStatusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -83,6 +88,77 @@ struct MenuBarView: View {
             }
         }
         .padding()
+    }
+
+    private var headerIcon: String {
+        appState.dictationState == .idle ? appState.playbackState.systemImage : appState.dictationState.systemImage
+    }
+
+    private var headerStatusText: String {
+        appState.dictationState == .idle ? appState.playbackState.displayName : appState.dictationState.displayName
+    }
+
+    // MARK: - Dictation Section
+
+    private var dictationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Verbatim Dictation", systemImage: appState.dictationState.systemImage)
+                    .font(.subheadline)
+                    .foregroundStyle(appState.dictationState == .recording ? .red : .secondary)
+
+                Spacer()
+
+                Text("⌥D")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(NSColor.tertiaryLabelColor).opacity(0.2))
+                    .cornerRadius(4)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    appState.toggleDictation()
+                } label: {
+                    Label(
+                        appState.dictationState == .idle ? "Start" : "Stop & Insert",
+                        systemImage: appState.dictationState == .idle ? "mic.fill" : "stop.fill"
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                if appState.dictationState != .idle {
+                    Button("Cancel") {
+                        appState.cancelDictation()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                if appState.dictationState == .authorizing {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
+
+                Spacer()
+            }
+
+            if !appState.dictationTranscript.isEmpty {
+                Text(appState.dictationTranscript)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
     }
     
     // MARK: - Quick Input Section

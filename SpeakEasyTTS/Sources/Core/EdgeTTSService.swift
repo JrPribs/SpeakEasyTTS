@@ -67,7 +67,13 @@ final class EdgeTTSService: SpeechService {
         let rateString = ratePercent >= 0 ? "+\(ratePercent)%" : "\(ratePercent)%"
         
         // Build arguments
-        let pythonPath = EdgeTTSService.findPython3Path()
+        guard let pythonPath = EdgeTTSService.findPython3Path() else {
+            onError?(EdgeTTSError.edgeTTSNotInstalled)
+            currentState = .idle
+            onStateChange?(.idle)
+            return
+        }
+
         let arguments = [
             "-m", "edge_tts",
             "-t", request.text,
@@ -80,9 +86,6 @@ final class EdgeTTSService: SpeechService {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.executeEdgeTTS(pythonPath: pythonPath, arguments: arguments, outputFile: outputFile)
         }
-        
-        currentState = .playing
-        onStateChange?(.playing)
     }
     
     func pause() {
@@ -111,7 +114,7 @@ final class EdgeTTSService: SpeechService {
 
     private static var cachedPython3Path: String?
 
-    static func findPython3Path() -> String {
+    static func findPython3Path() -> String? {
         if let cached = cachedPython3Path { return cached }
 
         let candidates = [
@@ -129,10 +132,8 @@ final class EdgeTTSService: SpeechService {
             }
         }
 
-        // Fall back to PATH resolution via shell
-        print("[EdgeTTS] No python3 with edge-tts found at known paths, falling back to PATH resolution")
-        cachedPython3Path = "python3"
-        return "python3"
+        print("[EdgeTTS] No python3 with edge-tts found at known paths")
+        return nil
     }
 
     /// Check if a given python3 binary has the edge-tts module installed
@@ -184,6 +185,7 @@ final class EdgeTTSService: SpeechService {
                 DispatchQueue.main.async { [weak self] in
                     self?.onError?(EdgeTTSError.synthesisFailure(errorMessage))
                     self?.currentState = .idle
+                    self?.currentProcess = nil
                     self?.onStateChange?(.idle)
                 }
             }
@@ -191,6 +193,7 @@ final class EdgeTTSService: SpeechService {
             DispatchQueue.main.async { [weak self] in
                 self?.onError?(error)
                 self?.currentState = .idle
+                self?.currentProcess = nil
                 self?.onStateChange?(.idle)
             }
         }
@@ -198,21 +201,38 @@ final class EdgeTTSService: SpeechService {
     
     private func playAudioFile(_ url: URL) {
         do {
-            audioPlayer = try AVAudioPlayer(contentsOf: url)
+            let player = try AVAudioPlayer(contentsOf: url)
             let delegate = AudioPlayerDelegate { [weak self] in
                 self?.currentState = .idle
                 self?.onStateChange?(.idle)
                 self?.audioPlayerDelegate = nil
+                self?.audioPlayer = nil
                 
                 // Clean up temp file
                 try? FileManager.default.removeItem(at: url)
             }
             audioPlayerDelegate = delegate
-            audioPlayer?.delegate = delegate
-            audioPlayer?.play()
+            player.delegate = delegate
+
+            guard player.prepareToPlay(), player.play() else {
+                audioPlayerDelegate = nil
+                try? FileManager.default.removeItem(at: url)
+                onError?(EdgeTTSError.synthesisFailure("Could not start audio playback."))
+                currentState = .idle
+                currentProcess = nil
+                onStateChange?(.idle)
+                return
+            }
+
+            audioPlayer = player
+            currentProcess = nil
+            currentState = .playing
+            onStateChange?(.playing)
         } catch {
+            try? FileManager.default.removeItem(at: url)
             onError?(error)
             currentState = .idle
+            currentProcess = nil
             onStateChange?(.idle)
         }
     }
@@ -277,7 +297,6 @@ enum EdgeTTSError: LocalizedError {
 extension EdgeTTSService {
     /// Check if Edge TTS is available (Python 3 with edge-tts module installed)
     static func isAvailable() -> Bool {
-        let pythonPath = findPython3Path()
-        return hasEdgeTTS(pythonPath: pythonPath)
+        findPython3Path() != nil
     }
 }

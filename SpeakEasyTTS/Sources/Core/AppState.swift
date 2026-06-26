@@ -45,13 +45,14 @@ final class AppState {
     // MARK: - Private
     private var cancellables = Set<AnyCancellable>()
     private var hasInsertedCurrentDictation = false
+    private static let legacyDefaultEdgeVoiceId = "en-US-GuyNeural"
     
     // MARK: - Initialization
     
     private init() {
         // Initialize settings first to know which engine to use
         let store = SettingsStore()
-        let loadedSettings = store.loadSettings()
+        let loadedSettings = Self.resolvePlaybackSettings(store.loadSettings(), store: store)
         
         // Initialize both speech services
         let native = NativeSpeechService()
@@ -181,7 +182,15 @@ final class AppState {
     
     /// Switch TTS engine and reload voices
     func switchEngine(_ engine: SpeechSettings.TTSEngine) {
+        if engine == .edgeTTS && !EdgeTTSService.isAvailable() {
+            errorMessage = EdgeTTSError.edgeTTSNotInstalled.localizedDescription
+            print("[TTS] Edge TTS unavailable; staying on \(settings.ttsEngine.rawValue)")
+            return
+        }
+
+        speechService.stop()
         settings.ttsEngine = engine
+        progress = nil
         
         // Switch the active speech service
         if engine == .edgeTTS {
@@ -219,6 +228,11 @@ final class AppState {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "No text to speak"
             return
+        }
+
+        if settings.ttsEngine == .edgeTTS && !EdgeTTSService.isAvailable() {
+            print("[TTS] Edge TTS unavailable; falling back to native macOS speech")
+            switchEngine(.native)
         }
 
         let engine = settings.ttsEngine == .edgeTTS ? "Edge TTS" : "Native"
@@ -494,6 +508,26 @@ final class AppState {
         if hasSelectedText != newValue {
             hasSelectedText = newValue
         }
+    }
+
+    private static func resolvePlaybackSettings(_ loadedSettings: SpeechSettings, store: SettingsStore) -> SpeechSettings {
+        var settings = loadedSettings
+        let isOldDefaultEdgeSelection = settings.ttsEngine == .edgeTTS
+            && settings.selectedVoiceId == legacyDefaultEdgeVoiceId
+
+        if isOldDefaultEdgeSelection {
+            print("[TTS] Migrating default playback engine to native macOS speech")
+            settings.ttsEngine = .native
+            settings.selectedVoiceId = nil
+            store.saveSettings(settings)
+        } else if settings.ttsEngine == .edgeTTS && !EdgeTTSService.isAvailable() {
+            print("[TTS] Edge TTS unavailable at launch; using native macOS speech")
+            settings.ttsEngine = .native
+            settings.selectedVoiceId = nil
+            store.saveSettings(settings)
+        }
+
+        return settings
     }
     
     private func setupSpeechServiceCallbacks() {

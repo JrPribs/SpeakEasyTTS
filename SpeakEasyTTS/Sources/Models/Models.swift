@@ -141,11 +141,11 @@ struct SpeechSettings: Codable, Equatable {
     
     /// Default settings
     static let `default` = SpeechSettings(
-        selectedVoiceId: "en-US-GuyNeural",  // Default to Edge TTS voice
+        selectedVoiceId: nil,
         rate: 0.5,      // AVSpeechUtteranceDefaultSpeechRate
         pitch: 1.0,     // Normal pitch
         volume: 1.0,    // Full volume
-        ttsEngine: .edgeTTS,  // Default to Edge TTS for better quality
+        ttsEngine: .native,
         autoReadOnSelection: false,  // Disabled by default
         autoReadDelay: 0.8  // 0.8 second debounce delay
     )

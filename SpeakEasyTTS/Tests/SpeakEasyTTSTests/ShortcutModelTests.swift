@@ -107,14 +107,14 @@ struct ShortcutModelTests {
                 triggerMode: .holdToRecord
             )
         ])
-        #expect(HotkeyManager.requiresEscapeMonitoring(for: preferences))
+        #expect(HotkeyManager.requiresAuxiliaryMonitoring(for: preferences))
     }
 
     @Test
-    func toggleModeDoesNotRequireEscapeMonitoring() {
+    func toggleModeDoesNotRequireAuxiliaryMonitoring() {
         let preferences = ShortcutPreferences.default
 
-        #expect(!HotkeyManager.requiresEscapeMonitoring(for: preferences))
+        #expect(!HotkeyManager.requiresAuxiliaryMonitoring(for: preferences))
         #expect(HotkeyManager.hotkeyDefinitions(from: preferences).contains(
             HotkeyManager.HotkeyDefinition(
                 action: .toggleDictation,
@@ -141,13 +141,20 @@ struct ShortcutModelTests {
             shortcut: ShortcutPreferences.default.dictation.shortcut,
             triggerMode: .holdToRecord
         )
+        let latchDictation = HotkeyManager.HotkeyDefinition(
+            action: .toggleDictation,
+            shortcut: ShortcutPreferences.default.dictation.shortcut,
+            triggerMode: .holdWithSpaceLatch
+        )
 
         #expect(HotkeyManager.command(for: readSelection, eventKind: .pressed) == .readSelection)
         #expect(HotkeyManager.command(for: readSelection, eventKind: .released) == nil)
         #expect(HotkeyManager.command(for: toggleDictation, eventKind: .pressed) == .toggleDictation)
         #expect(HotkeyManager.command(for: toggleDictation, eventKind: .released) == nil)
-        #expect(HotkeyManager.command(for: holdDictation, eventKind: .pressed) == .startHoldDictation)
+        #expect(HotkeyManager.command(for: holdDictation, eventKind: .pressed) == .startHoldDictation(canLatch: false))
         #expect(HotkeyManager.command(for: holdDictation, eventKind: .released) == .finishHoldDictation)
+        #expect(HotkeyManager.command(for: latchDictation, eventKind: .pressed) == .startHoldDictation(canLatch: true))
+        #expect(HotkeyManager.command(for: latchDictation, eventKind: .released) == .finishHoldDictation)
     }
 
     @Test
@@ -160,5 +167,27 @@ struct ShortcutModelTests {
 
         #expect(HotkeyManager.command(for: legacyDictation, eventKind: .pressed) == .toggleDictation)
         #expect(HotkeyManager.command(for: legacyDictation, eventKind: .released) == nil)
+    }
+
+    @Test
+    func spaceLatchIsAcceptedOnlyForLatchMode() {
+        var latchPreferences = ShortcutPreferences.default
+        latchPreferences.dictation.triggerMode = .holdWithSpaceLatch
+
+        var holdPreferences = ShortcutPreferences.default
+        holdPreferences.dictation.triggerMode = .holdToRecord
+
+        let plainSpace = KeyboardShortcut(keyCode: KeyCodeDisplayName.space, modifiers: [])
+        let modifiedSpace = KeyboardShortcut(
+            keyCode: KeyCodeDisplayName.space,
+            modifiers: latchPreferences.dictation.shortcut.modifiers
+        )
+        let wrongKey = KeyboardShortcut(keyCode: KeyCodeDisplayName.d, modifiers: [])
+
+        #expect(HotkeyManager.requiresAuxiliaryMonitoring(for: latchPreferences))
+        #expect(HotkeyManager.shouldLatchFromAuxiliaryShortcut(plainSpace, shortcuts: latchPreferences))
+        #expect(HotkeyManager.shouldLatchFromAuxiliaryShortcut(modifiedSpace, shortcuts: latchPreferences))
+        #expect(!HotkeyManager.shouldLatchFromAuxiliaryShortcut(wrongKey, shortcuts: latchPreferences))
+        #expect(!HotkeyManager.shouldLatchFromAuxiliaryShortcut(plainSpace, shortcuts: holdPreferences))
     }
 }

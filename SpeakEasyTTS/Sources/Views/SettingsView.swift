@@ -350,6 +350,7 @@ struct ShortcutsTab: View {
                 )) {
                     Text(DictationTriggerMode.toggle.displayName).tag(DictationTriggerMode.toggle)
                     Text(DictationTriggerMode.holdToRecord.displayName).tag(DictationTriggerMode.holdToRecord)
+                    Text(DictationTriggerMode.holdWithSpaceLatch.displayName).tag(DictationTriggerMode.holdWithSpaceLatch)
                 }
             }
             

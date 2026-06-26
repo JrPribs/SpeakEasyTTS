@@ -363,6 +363,9 @@ struct FloatingOverlayView: View {
         if !appState.hasAccessibilityPermissions {
             return Color(nsColor: .systemOrange)
         }
+        if appState.isDictationLatched {
+            return Color(nsColor: .systemPink)
+        }
         if appState.dictationState == .recording {
             return Color(nsColor: .systemRed)
         }
@@ -390,6 +393,9 @@ struct FloatingOverlayView: View {
         if !appState.hasAccessibilityPermissions {
             return "lock.fill"
         }
+        if appState.isDictationLatched {
+            return "pin.fill"
+        }
         if appState.dictationState == .recording {
             return "mic.fill"
         }
@@ -416,6 +422,12 @@ struct FloatingOverlayView: View {
     private var primaryButtonHelpText: String {
         if !appState.hasAccessibilityPermissions {
             return "Open Accessibility Settings"
+        }
+        if appState.isDictationLatched {
+            return "Stop latched dictation and insert text"
+        }
+        if appState.canLatchDictationWithSpace {
+            return "Release to finish. Press Space to latch."
         }
         if appState.dictationState == .recording {
             return "Stop dictation and insert text"

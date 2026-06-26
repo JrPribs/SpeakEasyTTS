@@ -23,7 +23,33 @@ final class AppState {
     var isInputWindowVisible: Bool = false
     var hasSelectedText: Bool = false
     var dictationState: DictationState = .idle
+    var dictationTriggerState: DictationTriggerState = .inactive
     var dictationTranscript: String = ""
+
+    var isDictationHeld: Bool {
+        if case .holding = dictationTriggerState {
+            return true
+        }
+        return false
+    }
+
+    var isDictationLatched: Bool {
+        switch dictationTriggerState {
+        case .holding(_, let isLatched):
+            return isLatched
+        case .latched:
+            return true
+        case .inactive:
+            return false
+        }
+    }
+
+    var canLatchDictationWithSpace: Bool {
+        if case .holding(let canLatch, _) = dictationTriggerState {
+            return canLatch
+        }
+        return false
+    }
     
     // MARK: - Accessibility Permissions
     var hasAccessibilityPermissions: Bool = false
@@ -337,6 +363,7 @@ final class AppState {
 
     /// Toggle native speech-to-text dictation. Completed text is pasted into the last focused app.
     func toggleDictation() {
+        dictationTriggerState = .inactive
         switch dictationState {
         case .idle:
             startDictation()
@@ -364,12 +391,44 @@ final class AppState {
     /// Stop dictation and insert the captured transcript into the focused app.
     func stopDictationAndInsert() {
         let textToInsert = dictationTranscript
+        dictationTriggerState = .inactive
         dictationService.stop()
         insertDictatedText(textToInsert)
     }
 
+    func beginHoldDictation(canLatch: Bool) {
+        if dictationTriggerState == .latched {
+            stopDictationAndInsert()
+            return
+        }
+
+        guard dictationState == .idle else { return }
+        dictationTriggerState = .holding(canLatch: canLatch, isLatched: false)
+        startDictation()
+    }
+
+    func latchHoldDictation() {
+        guard dictationState != .idle else { return }
+
+        if case .holding(true, let isLatched) = dictationTriggerState {
+            dictationTriggerState = .holding(canLatch: true, isLatched: !isLatched)
+        }
+    }
+
     /// Finish a hold-to-record session. If release happens during authorization, cancel without inserting.
     func finishHoldDictation() {
+        if case .latched = dictationTriggerState {
+            return
+        }
+
+        if case .holding(_, true) = dictationTriggerState {
+            dictationTriggerState = .latched
+            return
+        }
+
+        guard case .holding = dictationTriggerState else { return }
+        dictationTriggerState = .inactive
+
         switch dictationState {
         case .recording:
             stopDictationAndInsert()
@@ -382,6 +441,7 @@ final class AppState {
 
     /// Stop dictation without inserting text.
     func cancelDictation() {
+        dictationTriggerState = .inactive
         dictationService.stop()
         dictationTranscript = ""
         hasInsertedCurrentDictation = false
@@ -586,6 +646,7 @@ final class AppState {
             DispatchQueue.main.async {
                 self?.errorMessage = error.localizedDescription
                 self?.dictationState = .idle
+                self?.dictationTriggerState = .inactive
             }
         }
     }

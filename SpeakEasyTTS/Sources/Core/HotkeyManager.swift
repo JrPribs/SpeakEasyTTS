@@ -15,8 +15,9 @@ final class HotkeyManager {
     private var eventHandler: EventHandlerRef?
     private var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
     private var registeredHotkeys: [UInt32: HotkeyDefinition] = [:]
-    private var globalEscapeMonitor: Any?
-    private var localEscapeMonitor: Any?
+    private var globalAuxiliaryMonitor: Any?
+    private var localAuxiliaryMonitor: Any?
+    private var currentShortcuts: ShortcutPreferences = .default
     private let hotkeySignature = OSType(0x53455454) // "SETT"
 
     struct HotkeyDefinition: Equatable {
@@ -38,9 +39,10 @@ final class HotkeyManager {
     /// Register global hotkeys from current shortcut preferences.
     @discardableResult
     func registerGlobalHotkey(shortcuts: ShortcutPreferences = .default) -> [HotkeyRegistrationFailure] {
-        if !hotkeyRefs.isEmpty || globalEscapeMonitor != nil || localEscapeMonitor != nil {
+        if !hotkeyRefs.isEmpty || globalAuxiliaryMonitor != nil || localAuxiliaryMonitor != nil {
             unregisterGlobalHotkey()
         }
+        currentShortcuts = shortcuts
 
         guard AXIsProcessTrusted() else {
             print("HotkeyManager: Accessibility permissions not granted")
@@ -58,8 +60,8 @@ final class HotkeyManager {
             }
         }
 
-        if Self.requiresEscapeMonitoring(for: shortcuts) {
-            installEscapeMonitor()
+        if Self.requiresAuxiliaryMonitoring(for: shortcuts) {
+            installAuxiliaryMonitor()
         }
 
         return failures
@@ -78,7 +80,7 @@ final class HotkeyManager {
             self.eventHandler = nil
         }
 
-        removeEscapeMonitor()
+        removeAuxiliaryMonitor()
 
         print("HotkeyManager: Global hotkeys unregistered")
     }
@@ -100,8 +102,15 @@ final class HotkeyManager {
         ]
     }
 
-    static func requiresEscapeMonitoring(for shortcuts: ShortcutPreferences) -> Bool {
+    static func requiresAuxiliaryMonitoring(for shortcuts: ShortcutPreferences) -> Bool {
         shortcuts.dictation.triggerMode != .toggle
+    }
+
+    static func shouldLatchFromAuxiliaryShortcut(_ shortcut: KeyboardShortcut, shortcuts: ShortcutPreferences) -> Bool {
+        guard shortcuts.dictation.triggerMode == .holdWithSpaceLatch else { return false }
+        guard shortcut.keyCode == KeyCodeDisplayName.space else { return false }
+
+        return shortcut.modifiers.isEmpty || shortcut.modifiers == shortcuts.dictation.shortcut.modifiers
     }
 
     static func command(for hotkey: HotkeyDefinition, eventKind: HotkeyEventKind) -> HotkeyCommand? {
@@ -114,7 +123,7 @@ final class HotkeyManager {
             case (.toggle, .pressed):
                 return .toggleDictation
             case (.holdToRecord, .pressed), (.holdWithSpaceLatch, .pressed):
-                return .startHoldDictation
+                return .startHoldDictation(canLatch: mode == .holdWithSpaceLatch)
             case (.holdToRecord, .released), (.holdWithSpaceLatch, .released):
                 return .finishHoldDictation
             default:
@@ -209,9 +218,9 @@ final class HotkeyManager {
             case .toggleDictation:
                 print("HotkeyManager: Dictation hotkey pressed")
                 AppState.shared.toggleDictation()
-            case .startHoldDictation:
+            case .startHoldDictation(let canLatch):
                 print("HotkeyManager: Hold dictation started")
-                AppState.shared.startDictation()
+                AppState.shared.beginHoldDictation(canLatch: canLatch)
             case .finishHoldDictation:
                 print("HotkeyManager: Hold dictation released")
                 AppState.shared.finishHoldDictation()
@@ -219,36 +228,43 @@ final class HotkeyManager {
         }
     }
 
-    private func installEscapeMonitor() {
-        removeEscapeMonitor()
+    private func installAuxiliaryMonitor() {
+        removeAuxiliaryMonitor()
 
-        globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleEscapeEvent(event)
+        globalAuxiliaryMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleAuxiliaryEvent(event)
         }
-        localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleEscapeEvent(event)
+        localAuxiliaryMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleAuxiliaryEvent(event)
             return event
         }
     }
 
-    private func removeEscapeMonitor() {
-        if let globalEscapeMonitor {
-            NSEvent.removeMonitor(globalEscapeMonitor)
-            self.globalEscapeMonitor = nil
+    private func removeAuxiliaryMonitor() {
+        if let globalAuxiliaryMonitor {
+            NSEvent.removeMonitor(globalAuxiliaryMonitor)
+            self.globalAuxiliaryMonitor = nil
         }
-        if let localEscapeMonitor {
-            NSEvent.removeMonitor(localEscapeMonitor)
-            self.localEscapeMonitor = nil
+        if let localAuxiliaryMonitor {
+            NSEvent.removeMonitor(localAuxiliaryMonitor)
+            self.localAuxiliaryMonitor = nil
         }
     }
 
-    private func handleEscapeEvent(_ event: NSEvent) {
+    private func handleAuxiliaryEvent(_ event: NSEvent) {
+        guard !event.isARepeat else { return }
+
         let shortcut = KeyboardShortcut(event: event)
-        guard shortcut.keyCode == KeyCodeDisplayName.escape, shortcut.modifiers.isEmpty else { return }
 
         DispatchQueue.main.async {
-            if AppState.shared.dictationState != .idle {
+            if shortcut.keyCode == KeyCodeDisplayName.escape, shortcut.modifiers.isEmpty,
+               AppState.shared.dictationState != .idle {
                 AppState.shared.cancelDictation()
+                return
+            }
+
+            if Self.shouldLatchFromAuxiliaryShortcut(shortcut, shortcuts: self.currentShortcuts) {
+                AppState.shared.latchHoldDictation()
             }
         }
     }
@@ -273,7 +289,7 @@ enum HotkeyEventKind: Equatable {
 enum HotkeyCommand: Equatable {
     case readSelection
     case toggleDictation
-    case startHoldDictation
+    case startHoldDictation(canLatch: Bool)
     case finishHoldDictation
 }
 

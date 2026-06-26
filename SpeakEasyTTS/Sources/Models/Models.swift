@@ -29,6 +29,12 @@ enum DictationState: Equatable {
     }
 }
 
+enum DictationTriggerState: Equatable {
+    case inactive
+    case holding(canLatch: Bool, isLatched: Bool)
+    case latched
+}
+
 // MARK: - PlaybackState
 
 /// Represents the current state of speech playback

@@ -171,9 +171,70 @@ struct ReadbackPipelineTests {
     }
 
     @Test
+    func fencedCodeBlocksIncludeDeterministicSummaries() {
+        let markdown = """
+        ```
+        $ swift test
+        git status --short
+        ```
+
+        ```bash
+        swift test
+        git status --short
+        ```
+
+        ```swift
+        struct ReadbackPipeline {
+            func process() {}
+        }
+        ```
+
+        ```swift
+        extension AppState {
+            func toggleDictation() {}
+        }
+        ```
+
+        ```diff
+        diff --git a/Sources/Core/ReadbackPipeline.swift b/Sources/Core/ReadbackPipeline.swift
+        --- a/Sources/Core/ReadbackPipeline.swift
+        +++ b/Sources/Core/ReadbackPipeline.swift
+        @@ -1 +1 @@
+        ```
+
+        ```json
+        {
+          "path": "Sources/Core/AppState.swift",
+          "ok": true
+        }
+        ```
+
+        ```yaml
+        path: Sources/Core/AppState.swift
+        ```
+
+        ```markdown
+        # Plan
+        Sources/Core/AppState.swift
+        ```
+        """
+
+        let spoken = summarize(markdown)
+
+        #expect(spoken.contains("Shell commands block, 2 lines. Commands: swift test, git status."))
+        #expect(spoken.contains("Bash shell commands block, 2 lines. Commands: swift test, git status."))
+        #expect(spoken.contains("Swift code block, 3 lines. Symbols: ReadbackPipeline, process."))
+        #expect(spoken.contains("Swift code block, 3 lines. Symbols: AppState, toggleDictation."))
+        #expect(spoken.contains("Diff block, 4 lines. Files: Sources, Core, ReadbackPipeline dot swift."))
+        #expect(spoken.contains("JSON block, 4 lines. Files: Sources, Core, AppState dot swift."))
+        #expect(spoken.contains("YAML config block, 1 line. Files: Sources, Core, AppState dot swift."))
+        #expect(spoken.contains("Markdown block, 2 lines. Files: Sources, Core, AppState dot swift."))
+    }
+
+    @Test
     func representativeCodexResponseNormalizesWithoutDroppingCodeBlocks() throws {
         let markdown = try String(contentsOf: try fixtureURL("codex-response.md"), encoding: .utf8)
-        let spoken = normalize(markdown)
+        let spoken = summarize(markdown)
 
         #expect(spoken.contains("Implementation Notes."))
         #expect(spoken.contains("Quote: Verified in the local SwiftPM package."))
@@ -183,7 +244,7 @@ struct ReadbackPipelineTests {
         #expect(spoken.contains("To do: Wire summaries later."))
         #expect(spoken.contains("Step 1: Run swift test."))
         #expect(spoken.contains("Table: Area, Status."))
-        #expect(spoken.contains("swift code block omitted."))
+        #expect(spoken.contains("Swift code block, 2 lines. Symbols: value."))
         #expect(!spoken.contains("let value"))
     }
 
@@ -192,6 +253,16 @@ struct ReadbackPipelineTests {
             source: InteractionSource(kind: .selectedText, text: text),
             text: text,
             profile: .cleanProse
+        )
+
+        return ReadbackPipeline().process(request).spokenText
+    }
+
+    private func summarize(_ text: String) -> String {
+        let request = ReadbackRequest(
+            source: InteractionSource(kind: .selectedText, text: text),
+            text: text,
+            profile: .technicalResponse
         )
 
         return ReadbackPipeline().process(request).spokenText

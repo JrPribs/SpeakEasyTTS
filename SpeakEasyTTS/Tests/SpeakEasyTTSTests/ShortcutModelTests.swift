@@ -75,8 +75,90 @@ struct ShortcutModelTests {
         let definitions = HotkeyManager.hotkeyDefinitions(from: preferences)
 
         #expect(definitions == [
-            HotkeyManager.HotkeyDefinition(action: .readSelection, shortcut: preferences.readSelection.shortcut),
-            HotkeyManager.HotkeyDefinition(action: .toggleDictation, shortcut: preferences.dictation.shortcut)
+            HotkeyManager.HotkeyDefinition(
+                action: .readSelection,
+                shortcut: preferences.readSelection.shortcut,
+                triggerMode: nil
+            ),
+            HotkeyManager.HotkeyDefinition(
+                action: .toggleDictation,
+                shortcut: preferences.dictation.shortcut,
+                triggerMode: .toggle
+            )
         ])
+    }
+
+    @Test
+    func holdToRecordDefinitionsPreserveTriggerMode() {
+        var preferences = ShortcutPreferences.default
+        preferences.dictation.triggerMode = .holdToRecord
+
+        let definitions = HotkeyManager.hotkeyDefinitions(from: preferences)
+
+        #expect(definitions == [
+            HotkeyManager.HotkeyDefinition(
+                action: .readSelection,
+                shortcut: preferences.readSelection.shortcut,
+                triggerMode: nil
+            ),
+            HotkeyManager.HotkeyDefinition(
+                action: .toggleDictation,
+                shortcut: preferences.dictation.shortcut,
+                triggerMode: .holdToRecord
+            )
+        ])
+        #expect(HotkeyManager.requiresEscapeMonitoring(for: preferences))
+    }
+
+    @Test
+    func toggleModeDoesNotRequireEscapeMonitoring() {
+        let preferences = ShortcutPreferences.default
+
+        #expect(!HotkeyManager.requiresEscapeMonitoring(for: preferences))
+        #expect(HotkeyManager.hotkeyDefinitions(from: preferences).contains(
+            HotkeyManager.HotkeyDefinition(
+                action: .toggleDictation,
+                shortcut: preferences.dictation.shortcut,
+                triggerMode: .toggle
+            )
+        ))
+    }
+
+    @Test
+    func hotkeyCommandsMapPressAndReleaseByTriggerMode() {
+        let readSelection = HotkeyManager.HotkeyDefinition(
+            action: .readSelection,
+            shortcut: ShortcutPreferences.default.readSelection.shortcut,
+            triggerMode: nil
+        )
+        let toggleDictation = HotkeyManager.HotkeyDefinition(
+            action: .toggleDictation,
+            shortcut: ShortcutPreferences.default.dictation.shortcut,
+            triggerMode: .toggle
+        )
+        let holdDictation = HotkeyManager.HotkeyDefinition(
+            action: .toggleDictation,
+            shortcut: ShortcutPreferences.default.dictation.shortcut,
+            triggerMode: .holdToRecord
+        )
+
+        #expect(HotkeyManager.command(for: readSelection, eventKind: .pressed) == .readSelection)
+        #expect(HotkeyManager.command(for: readSelection, eventKind: .released) == nil)
+        #expect(HotkeyManager.command(for: toggleDictation, eventKind: .pressed) == .toggleDictation)
+        #expect(HotkeyManager.command(for: toggleDictation, eventKind: .released) == nil)
+        #expect(HotkeyManager.command(for: holdDictation, eventKind: .pressed) == .startHoldDictation)
+        #expect(HotkeyManager.command(for: holdDictation, eventKind: .released) == .finishHoldDictation)
+    }
+
+    @Test
+    func nilDictationTriggerModeFallsBackToToggleCommand() {
+        let legacyDictation = HotkeyManager.HotkeyDefinition(
+            action: .toggleDictation,
+            shortcut: ShortcutPreferences.default.dictation.shortcut,
+            triggerMode: nil
+        )
+
+        #expect(HotkeyManager.command(for: legacyDictation, eventKind: .pressed) == .toggleDictation)
+        #expect(HotkeyManager.command(for: legacyDictation, eventKind: .released) == nil)
     }
 }

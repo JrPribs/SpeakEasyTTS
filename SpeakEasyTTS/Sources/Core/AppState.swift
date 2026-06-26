@@ -166,6 +166,12 @@ final class AppState {
             registerConfiguredHotkeys()
         }
     }
+
+    func updateDictationTriggerMode(_ mode: DictationTriggerMode) {
+        var shortcuts = settings.shortcuts
+        shortcuts.dictation.triggerMode = mode
+        updateShortcutPreferences(shortcuts)
+    }
     
     // MARK: - Voice Management
     
@@ -360,6 +366,18 @@ final class AppState {
         let textToInsert = dictationTranscript
         dictationService.stop()
         insertDictatedText(textToInsert)
+    }
+
+    /// Finish a hold-to-record session. If release happens during authorization, cancel without inserting.
+    func finishHoldDictation() {
+        switch dictationState {
+        case .recording:
+            stopDictationAndInsert()
+        case .authorizing:
+            cancelDictation()
+        case .idle:
+            break
+        }
     }
 
     /// Stop dictation without inserting text.

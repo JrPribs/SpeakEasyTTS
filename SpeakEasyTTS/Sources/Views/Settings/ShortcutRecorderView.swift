@@ -100,36 +100,13 @@ private final class ShortcutCaptureNSView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        let modifiers = ShortcutModifiers(eventModifierFlags: event.modifierFlags)
-        let keyCode = UInt32(event.keyCode)
+        let shortcut = KeyboardShortcut(event: event)
 
-        if keyCode == KeyCodeDisplayName.escape && modifiers.isEmpty {
+        if shortcut.keyCode == KeyCodeDisplayName.escape && shortcut.modifiers.isEmpty {
             onCancel?()
             return
         }
 
-        onShortcut?(KeyboardShortcut(keyCode: keyCode, modifiers: modifiers))
-    }
-}
-
-private extension ShortcutModifiers {
-    init(eventModifierFlags flags: NSEvent.ModifierFlags) {
-        var modifiers: ShortcutModifiers = []
-        let deviceFlags = flags.intersection(.deviceIndependentFlagsMask)
-
-        if deviceFlags.contains(.command) {
-            modifiers.insert(.command)
-        }
-        if deviceFlags.contains(.shift) {
-            modifiers.insert(.shift)
-        }
-        if deviceFlags.contains(.option) {
-            modifiers.insert(.option)
-        }
-        if deviceFlags.contains(.control) {
-            modifiers.insert(.control)
-        }
-
-        self = modifiers
+        onShortcut?(shortcut)
     }
 }

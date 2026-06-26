@@ -343,6 +343,14 @@ struct ShortcutsTab: View {
                     onRecord: { saveShortcut($0, for: .toggleDictation) },
                     onReset: { resetShortcut(for: .toggleDictation) }
                 )
+
+                Picker("Dictation Mode", selection: Binding(
+                    get: { appState.settings.shortcuts.dictation.triggerMode ?? .toggle },
+                    set: { appState.updateDictationTriggerMode($0) }
+                )) {
+                    Text(DictationTriggerMode.toggle.displayName).tag(DictationTriggerMode.toggle)
+                    Text(DictationTriggerMode.holdToRecord.displayName).tag(DictationTriggerMode.holdToRecord)
+                }
             }
             
             Section("Playback Controls") {

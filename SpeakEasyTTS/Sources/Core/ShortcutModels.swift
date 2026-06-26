@@ -3,6 +3,7 @@
 
 import Carbon
 import Foundation
+import AppKit
 
 struct ShortcutModifiers: OptionSet, Codable, Equatable, Hashable {
     let rawValue: UInt32
@@ -21,6 +22,26 @@ struct ShortcutModifiers: OptionSet, Codable, Equatable, Hashable {
 
     init(rawValue: UInt32) {
         self.rawValue = rawValue
+    }
+
+    init(eventModifierFlags flags: NSEvent.ModifierFlags) {
+        var modifiers: ShortcutModifiers = []
+        let deviceFlags = flags.intersection(.deviceIndependentFlagsMask)
+
+        if deviceFlags.contains(.command) {
+            modifiers.insert(.command)
+        }
+        if deviceFlags.contains(.shift) {
+            modifiers.insert(.shift)
+        }
+        if deviceFlags.contains(.option) {
+            modifiers.insert(.option)
+        }
+        if deviceFlags.contains(.control) {
+            modifiers.insert(.control)
+        }
+
+        self = modifiers
     }
 
     var displayName: String {
@@ -46,6 +67,13 @@ struct KeyboardShortcut: Codable, Equatable, Hashable {
         self.keyCode = keyCode
         self.modifiers = modifiers
         self.displayName = displayName ?? Self.makeDisplayName(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    init(event: NSEvent) {
+        self.init(
+            keyCode: UInt32(event.keyCode),
+            modifiers: ShortcutModifiers(eventModifierFlags: event.modifierFlags)
+        )
     }
 
     static func makeDisplayName(keyCode: UInt32, modifiers: ShortcutModifiers) -> String {

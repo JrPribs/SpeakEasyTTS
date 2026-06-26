@@ -14,11 +14,15 @@ final class HotkeyManager {
     // MARK: - Properties
     private var eventHandler: EventHandlerRef?
     private var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
+    private var registeredHotkeys: [UInt32: HotkeyDefinition] = [:]
+    private var globalEscapeMonitor: Any?
+    private var localEscapeMonitor: Any?
     private let hotkeySignature = OSType(0x53455454) // "SETT"
 
     struct HotkeyDefinition: Equatable {
         let action: ShortcutTriggerAction
         let shortcut: KeyboardShortcut
+        let triggerMode: DictationTriggerMode?
     }
 
     // MARK: - Initialization
@@ -34,7 +38,7 @@ final class HotkeyManager {
     /// Register global hotkeys from current shortcut preferences.
     @discardableResult
     func registerGlobalHotkey(shortcuts: ShortcutPreferences = .default) -> [HotkeyRegistrationFailure] {
-        if !hotkeyRefs.isEmpty {
+        if !hotkeyRefs.isEmpty || globalEscapeMonitor != nil || localEscapeMonitor != nil {
             unregisterGlobalHotkey()
         }
 
@@ -54,6 +58,10 @@ final class HotkeyManager {
             }
         }
 
+        if Self.requiresEscapeMonitoring(for: shortcuts) {
+            installEscapeMonitor()
+        }
+
         return failures
     }
 
@@ -63,11 +71,14 @@ final class HotkeyManager {
             UnregisterEventHotKey(hotkeyRef)
         }
         hotkeyRefs.removeAll()
+        registeredHotkeys.removeAll()
 
         if let eventHandler = eventHandler {
             RemoveEventHandler(eventHandler)
             self.eventHandler = nil
         }
+
+        removeEscapeMonitor()
 
         print("HotkeyManager: Global hotkeys unregistered")
     }
@@ -76,45 +87,78 @@ final class HotkeyManager {
 
     static func hotkeyDefinitions(from shortcuts: ShortcutPreferences) -> [HotkeyDefinition] {
         [
-            HotkeyDefinition(action: shortcuts.readSelection.action, shortcut: shortcuts.readSelection.shortcut),
-            HotkeyDefinition(action: shortcuts.dictation.action, shortcut: shortcuts.dictation.shortcut)
+            HotkeyDefinition(
+                action: shortcuts.readSelection.action,
+                shortcut: shortcuts.readSelection.shortcut,
+                triggerMode: shortcuts.readSelection.triggerMode
+            ),
+            HotkeyDefinition(
+                action: shortcuts.dictation.action,
+                shortcut: shortcuts.dictation.shortcut,
+                triggerMode: shortcuts.dictation.triggerMode
+            )
         ]
+    }
+
+    static func requiresEscapeMonitoring(for shortcuts: ShortcutPreferences) -> Bool {
+        shortcuts.dictation.triggerMode != .toggle
+    }
+
+    static func command(for hotkey: HotkeyDefinition, eventKind: HotkeyEventKind) -> HotkeyCommand? {
+        switch hotkey.action {
+        case .readSelection:
+            return eventKind == .pressed ? .readSelection : nil
+        case .toggleDictation:
+            let mode = hotkey.triggerMode ?? .toggle
+            switch (mode, eventKind) {
+            case (.toggle, .pressed):
+                return .toggleDictation
+            case (.holdToRecord, .pressed), (.holdWithSpaceLatch, .pressed):
+                return .startHoldDictation
+            case (.holdToRecord, .released), (.holdWithSpaceLatch, .released):
+                return .finishHoldDictation
+            default:
+                return nil
+            }
+        }
     }
 
     private func installEventHandlerIfNeeded() -> Bool {
         guard eventHandler == nil else { return true }
 
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
+        var eventTypes = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
+        ]
 
-        let status = InstallEventHandler(
-            GetApplicationEventTarget(),
-            { _, event, userData -> OSStatus in
-                var hkID = EventHotKeyID()
-                GetEventParameter(
-                    event,
-                    EventParamName(kEventParamDirectObject),
-                    EventParamType(typeEventHotKeyID),
-                    nil,
-                    MemoryLayout<EventHotKeyID>.size,
-                    nil,
-                    &hkID
-                )
+        let status = eventTypes.withUnsafeMutableBufferPointer { eventTypes in
+            InstallEventHandler(
+                GetApplicationEventTarget(),
+                { _, event, userData -> OSStatus in
+                    var hkID = EventHotKeyID()
+                    GetEventParameter(
+                        event,
+                        EventParamName(kEventParamDirectObject),
+                        EventParamType(typeEventHotKeyID),
+                        nil,
+                        MemoryLayout<EventHotKeyID>.size,
+                        nil,
+                        &hkID
+                    )
 
-                if let userData {
-                    let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-                    manager.handleHotkey(id: hkID.id)
-                }
+                    if let userData, let eventKind = HotkeyEventKind(carbonEventKind: GetEventKind(event)) {
+                        let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+                        manager.handleHotkey(id: hkID.id, eventKind: eventKind)
+                    }
 
-                return noErr
-            },
-            1,
-            &eventType,
-            UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
-            &eventHandler
-        )
+                    return noErr
+                },
+                eventTypes.count,
+                eventTypes.baseAddress,
+                UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+                &eventHandler
+            )
+        }
         
         guard status == noErr else {
             print("HotkeyManager: Failed to install event handler: \(status)")
@@ -141,6 +185,7 @@ final class HotkeyManager {
 
         if status == noErr, let hotkeyRef {
             hotkeyRefs[hotkey.action.hotkeyID] = hotkeyRef
+            registeredHotkeys[hotkey.action.hotkeyID] = hotkey
             print("HotkeyManager: Global hotkey registered (\(hotkey.shortcut.displayName))")
             return nil
         } else {
@@ -150,20 +195,86 @@ final class HotkeyManager {
         }
     }
 
-    private func handleHotkey(id: UInt32) {
+    private func handleHotkey(id: UInt32, eventKind: HotkeyEventKind) {
         DispatchQueue.main.async {
-            switch ShortcutTriggerAction(hotkeyID: id) {
+            guard let hotkey = self.registeredHotkeys[id],
+                  let command = Self.command(for: hotkey, eventKind: eventKind) else {
+                return
+            }
+
+            switch command {
             case .readSelection:
                 print("HotkeyManager: Read selection hotkey pressed")
                 AppState.shared.speakSelectedText()
             case .toggleDictation:
                 print("HotkeyManager: Dictation hotkey pressed")
                 AppState.shared.toggleDictation()
-            case .none:
-                print("HotkeyManager: Unknown hotkey id \(id)")
+            case .startHoldDictation:
+                print("HotkeyManager: Hold dictation started")
+                AppState.shared.startDictation()
+            case .finishHoldDictation:
+                print("HotkeyManager: Hold dictation released")
+                AppState.shared.finishHoldDictation()
             }
         }
     }
+
+    private func installEscapeMonitor() {
+        removeEscapeMonitor()
+
+        globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleEscapeEvent(event)
+        }
+        localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleEscapeEvent(event)
+            return event
+        }
+    }
+
+    private func removeEscapeMonitor() {
+        if let globalEscapeMonitor {
+            NSEvent.removeMonitor(globalEscapeMonitor)
+            self.globalEscapeMonitor = nil
+        }
+        if let localEscapeMonitor {
+            NSEvent.removeMonitor(localEscapeMonitor)
+            self.localEscapeMonitor = nil
+        }
+    }
+
+    private func handleEscapeEvent(_ event: NSEvent) {
+        let shortcut = KeyboardShortcut(event: event)
+        guard shortcut.keyCode == KeyCodeDisplayName.escape, shortcut.modifiers.isEmpty else { return }
+
+        DispatchQueue.main.async {
+            if AppState.shared.dictationState != .idle {
+                AppState.shared.cancelDictation()
+            }
+        }
+    }
+}
+
+enum HotkeyEventKind: Equatable {
+    case pressed
+    case released
+
+    init?(carbonEventKind: UInt32) {
+        switch carbonEventKind {
+        case UInt32(kEventHotKeyPressed):
+            self = .pressed
+        case UInt32(kEventHotKeyReleased):
+            self = .released
+        default:
+            return nil
+        }
+    }
+}
+
+enum HotkeyCommand: Equatable {
+    case readSelection
+    case toggleDictation
+    case startHoldDictation
+    case finishHoldDictation
 }
 
 struct HotkeyRegistrationFailure: Equatable {

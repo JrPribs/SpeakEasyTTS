@@ -4,13 +4,21 @@
 import Foundation
 
 final class InteractionCoordinator {
+    struct TextInsertionFailure: Error, Equatable {
+        var message: String
+    }
+
     struct DictationDependencies {
         var playbackState: () -> PlaybackState
         var stopPlayback: () -> Void
-        var trackTargetApp: () -> Void
+        var trackTargetApp: () -> AppContext?
         var startDictation: () -> Void
         var stopDictation: () -> Void
-        var insertText: (_ text: String, _ completion: @escaping (Bool) -> Void) -> Void
+        var insertText: (
+            _ text: String,
+            _ destination: InteractionDestination,
+            _ completion: @escaping (Result<InteractionDestination, TextInsertionFailure>) -> Void
+        ) -> Void
     }
 
     private(set) var activeSession: InteractionSession?
@@ -55,15 +63,17 @@ final class InteractionCoordinator {
         setDictationTranscript("")
         hasInsertedCurrentDictation = false
         setDictationErrorMessage(nil)
+        let targetApp = dependencies.trackTargetApp()
 
         let date = now()
         emit(InteractionSession(
             id: makeID(),
             mode: .dictateVerbatim,
             state: .preparing,
+            targetApp: targetApp,
             triggerState: dictationTriggerState,
-            source: InteractionSource(kind: .microphone),
-            destination: InteractionDestination(kind: .targetApp, writeMode: .insert),
+            source: InteractionSource(kind: .microphone, appContext: targetApp),
+            destination: InteractionDestination(kind: .targetApp, appContext: targetApp, writeMode: .insert),
             createdAt: date,
             updatedAt: date
         ))
@@ -72,7 +82,6 @@ final class InteractionCoordinator {
             dependencies.stopPlayback()
         }
 
-        dependencies.trackTargetApp()
         dependencies.startDictation()
     }
 
@@ -335,18 +344,24 @@ final class InteractionCoordinator {
         guard !hasInsertedCurrentDictation else { return }
 
         hasInsertedCurrentDictation = true
-        dependencies.insertText(normalized) { [weak self] didInsert in
+        let destination = activeSession?.destination ?? InteractionDestination(kind: .targetApp, writeMode: .insert)
+        dependencies.insertText(normalized, destination) { [weak self] result in
             guard let self else { return }
             guard self.activeSession?.mode == .dictateVerbatim,
                   self.activeSession?.state.isTerminal == false else {
                 return
             }
 
-            if didInsert {
+            switch result {
+            case .success(let resolvedDestination):
                 self.setDictationTranscript(normalized)
+                self.updateActiveSession { session in
+                    session.destination = resolvedDestination
+                    session.targetApp = resolvedDestination.appContext
+                }
                 self.completeActiveSession(transcript: normalized)
-            } else {
-                let message = "Could not insert dictated text. Click into a text field and try again."
+            case .failure(let failure):
+                let message = failure.message
                 self.setDictationErrorMessage(message)
                 self.hasInsertedCurrentDictation = false
                 self.failActiveSession(

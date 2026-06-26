@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 @testable import SpeakEasyTTS
 
@@ -47,5 +48,62 @@ struct AppContextServiceTests {
         #expect(context.appName == "Unknown App")
         #expect(context.bundleIdentifier == nil)
         #expect(context.processIdentifier == nil)
+    }
+
+    @Test
+    func targetResolutionUsesFocusedExternalApplication() {
+        let currentApp = NSRunningApplication.current
+        let service = AppContextService(
+            frontmostApplication: { currentApp },
+            currentBundleIdentifier: { "com.example.SpeakEasyTest" },
+            now: { Date(timeIntervalSince1970: 4_003) }
+        )
+
+        let resolution = service.resolveTargetApplicationForTextInsertion()
+
+        guard case .focused(let application, let context) = resolution else {
+            Issue.record("Expected focused target resolution")
+            return
+        }
+
+        #expect(ObjectIdentifier(application) == ObjectIdentifier(currentApp))
+        #expect(context.processIdentifier == currentApp.processIdentifier)
+        #expect(!resolution!.isRecoverableFallback)
+    }
+
+    @Test
+    func targetResolutionFallsBackToRecoverableLastExternalApplication() {
+        let currentApp = NSRunningApplication.current
+        var currentBundleIdentifier = "com.example.OtherApp"
+        let service = AppContextService(
+            frontmostApplication: { currentApp },
+            currentBundleIdentifier: { currentBundleIdentifier },
+            now: { Date(timeIntervalSince1970: 4_004) }
+        )
+        service.trackFrontmostApp()
+
+        currentBundleIdentifier = currentApp.bundleIdentifier ?? "com.example.SpeakEasy"
+        let resolution = service.resolveTargetApplicationForTextInsertion()
+
+        guard case .recoverable(let application, let context) = resolution else {
+            Issue.record("Expected recoverable target resolution")
+            return
+        }
+
+        #expect(ObjectIdentifier(application) == ObjectIdentifier(currentApp))
+        #expect(context.processIdentifier == currentApp.processIdentifier)
+        #expect(resolution!.isRecoverableFallback)
+    }
+
+    @Test
+    func targetResolutionReturnsNilWithoutFocusedOrRecoverableExternalApplication() {
+        let currentApp = NSRunningApplication.current
+        let service = AppContextService(
+            frontmostApplication: { currentApp },
+            currentBundleIdentifier: { currentApp.bundleIdentifier },
+            now: { Date(timeIntervalSince1970: 4_005) }
+        )
+
+        #expect(service.resolveTargetApplicationForTextInsertion() == nil)
     }
 }

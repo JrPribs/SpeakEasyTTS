@@ -21,6 +21,16 @@ struct TextDestinationResult: Equatable {
     var destination: InteractionDestination
 }
 
+private extension InteractionDestination {
+    func resolved(with appContext: AppContext) -> InteractionDestination {
+        InteractionDestination(
+            kind: kind,
+            appContext: appContext,
+            writeMode: writeMode
+        )
+    }
+}
+
 enum TextDestinationError: LocalizedError, Equatable {
     case emptyText
     case unsupportedDestination(InteractionDestinationKind)
@@ -41,7 +51,7 @@ enum TextDestinationError: LocalizedError, Equatable {
 final class TextDestinationService {
     typealias Completion = (Result<TextDestinationResult, TextDestinationError>) -> Void
 
-    private let targetApplication: () -> NSRunningApplication?
+    private let resolveTarget: (AppContext?) -> TargetAppResolution?
     private let activateTarget: (NSRunningApplication) -> Bool
     private let writePasteboardString: (String) -> Void
     private let makePasteboardSnapshot: () -> [NSPasteboardItem]
@@ -51,8 +61,10 @@ final class TextDestinationService {
 
     init(appContextService: AppContextService) {
         let pasteboard = NSPasteboard.general
-        self.targetApplication = {
-            appContextService.targetApplicationForUserInteraction()
+        self.resolveTarget = { intendedTarget in
+            appContextService.resolveTargetApplicationForTextInsertion(
+                intendedTarget: intendedTarget
+            )
         }
         self.activateTarget = { target in
             target.activate(options: [])
@@ -77,7 +89,7 @@ final class TextDestinationService {
 
     init(
         appContextService: AppContextService = AppContextService(),
-        targetApplication: @escaping () -> NSRunningApplication? = { nil },
+        resolveTarget: @escaping (AppContext?) -> TargetAppResolution? = { _ in nil },
         activateTarget: @escaping (NSRunningApplication) -> Bool = { _ in false },
         writePasteboardString: @escaping (String) -> Void = { _ in },
         makePasteboardSnapshot: @escaping () -> [NSPasteboardItem] = { [] },
@@ -85,7 +97,7 @@ final class TextDestinationService {
         postPasteCommand: @escaping () -> Void = {},
         scheduleAfter: @escaping (TimeInterval, @escaping () -> Void) -> Void = { _, work in work() }
     ) {
-        self.targetApplication = targetApplication
+        self.resolveTarget = resolveTarget
         self.activateTarget = activateTarget
         self.writePasteboardString = writePasteboardString
         self.makePasteboardSnapshot = makePasteboardSnapshot
@@ -105,7 +117,7 @@ final class TextDestinationService {
             return
         }
 
-        guard let target = targetApplication() else {
+        guard let target = resolveTarget(request.destination.appContext) else {
             completion(.failure(.targetUnavailable))
             return
         }
@@ -113,14 +125,16 @@ final class TextDestinationService {
         let snapshot = makePasteboardSnapshot()
         writePasteboardString(request.text)
 
-        let didActivate = activateTarget(target)
+        let didActivate = activateTarget(target.application)
         let pasteDelay: TimeInterval = didActivate ? 0.15 : 0.05
         scheduleAfter(pasteDelay) { [postPasteCommand, restorePasteboardSnapshot, scheduleAfter] in
             postPasteCommand()
 
             scheduleAfter(0.35) {
                 restorePasteboardSnapshot(snapshot)
-                completion(.success(TextDestinationResult(destination: request.destination)))
+                completion(.success(TextDestinationResult(
+                    destination: request.destination.resolved(with: target.context)
+                )))
             }
         }
     }

@@ -688,7 +688,7 @@ final class AppState {
                 self?.performStopSpeech()
             },
             trackTargetApp: { [weak self] in
-                self?.appContextService.trackFrontmostApp()
+                self?.appContextService.resolveTargetApplicationForTextInsertion()?.context
             },
             startDictation: { [weak self] in
                 self?.dictationService.start()
@@ -696,16 +696,25 @@ final class AppState {
             stopDictation: { [weak self] in
                 self?.dictationService.stop()
             },
-            insertText: { [weak self] text, completion in
+            insertText: { [weak self] text, destination, completion in
                 guard let self else {
-                    completion(false)
+                    completion(.failure(InteractionCoordinator.TextInsertionFailure(
+                        message: "Could not insert dictated text. Click into a text field and try again."
+                    )))
                     return
                 }
 
                 self.textDestinationService.write(
-                    TextDestinationRequest(text: text)
+                    TextDestinationRequest(text: text, destination: destination)
                 ) { result in
-                    completion((try? result.get()) != nil)
+                    switch result {
+                    case .success(let destinationResult):
+                        completion(.success(destinationResult.destination))
+                    case .failure(let error):
+                        completion(.failure(InteractionCoordinator.TextInsertionFailure(
+                            message: error.localizedDescription
+                        )))
+                    }
                 }
             }
         )

@@ -4,6 +4,32 @@
 import AppKit
 import Foundation
 
+enum TargetAppResolution {
+    case focused(NSRunningApplication, AppContext)
+    case recoverable(NSRunningApplication, AppContext)
+
+    var application: NSRunningApplication {
+        switch self {
+        case .focused(let application, _), .recoverable(let application, _):
+            return application
+        }
+    }
+
+    var context: AppContext {
+        switch self {
+        case .focused(_, let context), .recoverable(_, let context):
+            return context
+        }
+    }
+
+    var isRecoverableFallback: Bool {
+        if case .recoverable = self {
+            return true
+        }
+        return false
+    }
+}
+
 final class AppContextService {
     private let frontmostApplication: () -> NSRunningApplication?
     private let currentBundleIdentifier: () -> String?
@@ -56,6 +82,38 @@ final class AppContextService {
         currentExternalApplication() ?? lastExternalApplication()
     }
 
+    func resolveTargetApplicationForTextInsertion(
+        intendedTarget: AppContext? = nil
+    ) -> TargetAppResolution? {
+        guard let frontmost = frontmostApplication() else {
+            return recoverableLastExternalApplication(matching: intendedTarget)
+        }
+
+        if !isCurrentApplication(frontmost) {
+            let context = context(for: frontmost)
+            guard targetContext(context, matches: intendedTarget) else {
+                return nil
+            }
+
+            rememberExternalApplication(frontmost)
+            return .focused(frontmost, context)
+        }
+
+        return recoverableLastExternalApplication(matching: intendedTarget)
+    }
+
+    private func recoverableLastExternalApplication(
+        matching intendedTarget: AppContext?
+    ) -> TargetAppResolution? {
+        guard let last = lastExternalApplication(),
+              let context = lastExternalApplicationContext(),
+              targetContext(context, matches: intendedTarget) else {
+            return nil
+        }
+
+        return .recoverable(last, context)
+    }
+
     func lastExternalApplicationContext() -> AppContext? {
         guard lastExternalApplication() != nil else {
             return nil
@@ -102,5 +160,24 @@ final class AppContextService {
     private func rememberExternalApplication(_ application: NSRunningApplication) {
         lastExternalApp = application
         lastExternalAppContext = context(for: application)
+    }
+
+    private func targetContext(
+        _ context: AppContext,
+        matches intendedTarget: AppContext?
+    ) -> Bool {
+        guard let intendedTarget else { return true }
+
+        if let intendedPID = intendedTarget.processIdentifier,
+           let contextPID = context.processIdentifier {
+            return intendedPID == contextPID
+        }
+
+        if let intendedBundleID = intendedTarget.bundleIdentifier,
+           let contextBundleID = context.bundleIdentifier {
+            return intendedBundleID == contextBundleID
+        }
+
+        return false
     }
 }

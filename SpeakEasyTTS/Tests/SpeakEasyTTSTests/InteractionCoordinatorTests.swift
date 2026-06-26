@@ -19,14 +19,17 @@ struct InteractionCoordinatorTests {
         coordinator.toggleDictation(dependencies: harness.dependencies())
 
         #expect(harness.events == [
+            "trackTargetApp",
             "session:preparing",
             "stopPlayback",
-            "trackTargetApp",
             "startDictation"
         ])
         #expect(emittedSessions.first?.mode == .dictateVerbatim)
+        #expect(emittedSessions.first?.targetApp == harness.targetContext)
         #expect(emittedSessions.first?.source.kind == .microphone)
+        #expect(emittedSessions.first?.source.appContext == harness.targetContext)
         #expect(emittedSessions.first?.destination.kind == .targetApp)
+        #expect(emittedSessions.first?.destination.appContext == harness.targetContext)
         #expect(emittedSessions.first?.destination.writeMode == .insert)
         #expect(coordinator.dictationTranscript == "")
     }
@@ -53,6 +56,7 @@ struct InteractionCoordinatorTests {
         coordinator.toggleDictation(dependencies: harness.dependencies())
 
         #expect(harness.insertedTexts == ["hello"])
+        #expect(harness.insertedDestinations.first?.appContext == harness.targetContext)
         #expect(Array(harness.events.suffix(4)) == [
             "session:inserting",
             "stopDictation",
@@ -62,6 +66,7 @@ struct InteractionCoordinatorTests {
         #expect(emittedStates.contains(.inserting))
         #expect(coordinator.activeSession?.state == .completed)
         #expect(coordinator.activeSession?.transcript == "hello")
+        #expect(coordinator.activeSession?.destination.appContext == harness.targetContext)
     }
 
     @Test
@@ -396,11 +401,18 @@ struct InteractionCoordinatorTests {
 }
 
 private final class DictationHarness {
+    let targetContext = AppContext(
+        bundleIdentifier: "com.example.Target",
+        appName: "Target",
+        processIdentifier: 456,
+        capturedAt: Date(timeIntervalSince1970: 3_100)
+    )
     var playbackState: PlaybackState
     var events: [String] = []
     var insertedTexts: [String] = []
+    var insertedDestinations: [InteractionDestination] = []
     private var insertResults: [Bool]
-    private var pendingInsertCompletions: [(Bool) -> Void] = []
+    private var pendingInsertCompletions: [(Result<InteractionDestination, InteractionCoordinator.TextInsertionFailure>) -> Void] = []
     private let completesInsertImmediately: Bool
 
     init(
@@ -424,6 +436,7 @@ private final class DictationHarness {
             },
             trackTargetApp: { [self] in
                 events.append("trackTargetApp")
+                return targetContext
             },
             startDictation: { [self] in
                 events.append("startDictation")
@@ -431,11 +444,23 @@ private final class DictationHarness {
             stopDictation: { [self] in
                 events.append("stopDictation")
             },
-            insertText: { [self] text, completion in
+            insertText: { [self] text, destination, completion in
                 events.append("insert:\(text)")
                 insertedTexts.append(text)
+                insertedDestinations.append(destination)
+                let resolvedDestination = InteractionDestination(
+                    kind: destination.kind,
+                    appContext: targetContext,
+                    writeMode: destination.writeMode
+                )
                 if completesInsertImmediately {
-                    completion(nextInsertResult())
+                    if nextInsertResult() {
+                        completion(.success(resolvedDestination))
+                    } else {
+                        completion(.failure(InteractionCoordinator.TextInsertionFailure(
+                            message: "Could not insert dictated text. Click into a text field and try again."
+                        )))
+                    }
                 } else {
                     pendingInsertCompletions.append(completion)
                 }
@@ -447,7 +472,17 @@ private final class DictationHarness {
         guard !pendingInsertCompletions.isEmpty else { return }
 
         let completion = pendingInsertCompletions.removeFirst()
-        completion(didInsert)
+        if didInsert {
+            completion(.success(InteractionDestination(
+                kind: .targetApp,
+                appContext: targetContext,
+                writeMode: .insert
+            )))
+        } else {
+            completion(.failure(InteractionCoordinator.TextInsertionFailure(
+                message: "Could not insert dictated text. Click into a text field and try again."
+            )))
+        }
     }
 
     private func nextInsertResult() -> Bool {

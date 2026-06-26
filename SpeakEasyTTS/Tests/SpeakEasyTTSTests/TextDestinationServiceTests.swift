@@ -52,7 +52,7 @@ struct TextDestinationServiceTests {
             harness.events.append("completion")
         }
 
-        #expect(result == .success(TextDestinationResult(destination: destination)))
+        #expect(result == .success(TextDestinationResult(destination: harness.resolved(destination))))
         #expect(harness.events == [
             "target",
             "snapshot",
@@ -77,10 +77,49 @@ struct TextDestinationServiceTests {
                 service: service
             )
 
-            #expect(result == .success(TextDestinationResult(destination: destination)))
+            #expect(result == .success(TextDestinationResult(destination: harness.resolved(destination))))
             #expect(harness.events.contains("paste"))
             #expect(harness.events.last == "restore:1")
         }
+    }
+
+    @Test
+    func recoverableTargetStillUsesPasteboardSafePath() {
+        let harness = DestinationHarness(target: .current, targetIsRecoverableFallback: true)
+        let service = harness.makeService()
+        let destination = InteractionDestination(kind: .targetApp, writeMode: .insert)
+        let result = writeSynchronously(
+            TextDestinationRequest(text: "hello", destination: destination),
+            service: service
+        )
+
+        #expect(result == .success(TextDestinationResult(destination: harness.resolved(destination))))
+        #expect(harness.events.contains("paste"))
+        #expect(harness.events.last == "restore:1")
+    }
+
+    @Test
+    func intendedTargetMismatchFailsBeforeTouchingPasteboard() {
+        let mismatchedContext = AppContext(
+            bundleIdentifier: "com.example.OtherTarget",
+            appName: "Other",
+            processIdentifier: 999,
+            capturedAt: Date(timeIntervalSince1970: 5_001)
+        )
+        let harness = DestinationHarness(target: .current)
+        let service = harness.makeService()
+        let destination = InteractionDestination(
+            kind: .targetApp,
+            appContext: mismatchedContext,
+            writeMode: .insert
+        )
+        let result = writeSynchronously(
+            TextDestinationRequest(text: "hello", destination: destination),
+            service: service
+        )
+
+        #expect(result == .failure(.targetUnavailable))
+        #expect(harness.events == ["target"])
     }
 
     @Test
@@ -108,23 +147,49 @@ struct TextDestinationServiceTests {
 }
 
 private final class DestinationHarness {
+    let context = AppContext(
+        bundleIdentifier: "com.example.Target",
+        appName: "Target",
+        processIdentifier: 123,
+        capturedAt: Date(timeIntervalSince1970: 5_000)
+    )
     var events: [String] = []
     private let target: NSRunningApplication?
+    private let targetIsRecoverableFallback: Bool
     private let activatesTarget: Bool
 
     init(
         target: NSRunningApplication?,
+        targetIsRecoverableFallback: Bool = false,
         activatesTarget: Bool = true
     ) {
         self.target = target
+        self.targetIsRecoverableFallback = targetIsRecoverableFallback
         self.activatesTarget = activatesTarget
+    }
+
+    func resolved(_ destination: InteractionDestination) -> InteractionDestination {
+        InteractionDestination(
+            kind: destination.kind,
+            appContext: context,
+            writeMode: destination.writeMode
+        )
     }
 
     func makeService() -> TextDestinationService {
         TextDestinationService(
-            targetApplication: { [self] in
+            resolveTarget: { [self] intendedTarget in
                 events.append("target")
-                return target
+                guard let target else { return nil }
+                if let intendedTarget,
+                   intendedTarget != context {
+                    return nil
+                }
+
+                if targetIsRecoverableFallback {
+                    return .recoverable(target, context)
+                }
+                return .focused(target, context)
             },
             activateTarget: { [self] _ in
                 events.append("activate")

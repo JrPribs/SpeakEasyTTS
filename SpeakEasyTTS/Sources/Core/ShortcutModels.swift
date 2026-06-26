@@ -154,6 +154,42 @@ struct ShortcutPreferences: Codable, Equatable, Hashable {
     )
 }
 
+enum ShortcutValidator {
+    static func validationMessage(
+        for shortcut: KeyboardShortcut,
+        replacing action: ShortcutTriggerAction,
+        preferences: ShortcutPreferences
+    ) -> String? {
+        if shortcut.keyCode == KeyCodeDisplayName.function {
+            return "Function/Globe is hardware-dependent. Use Command, Option, or Control with a regular key."
+        }
+
+        let hasPrimaryModifier = shortcut.modifiers.contains(.command)
+            || shortcut.modifiers.contains(.option)
+            || shortcut.modifiers.contains(.control)
+        guard hasPrimaryModifier else {
+            return "Use Command, Option, or Control with a regular key."
+        }
+
+        if shortcut.keyCode == KeyCodeDisplayName.escape {
+            return "Escape is reserved."
+        }
+
+        switch action {
+        case .readSelection:
+            if shortcut.matches(preferences.dictation.shortcut) {
+                return "Already used by Dictation."
+            }
+        case .toggleDictation:
+            if shortcut.matches(preferences.readSelection.shortcut) {
+                return "Already used by Read Selected Text."
+            }
+        }
+
+        return nil
+    }
+}
+
 enum KeyCodeDisplayName {
     static let a: UInt32 = 0
     static let s: UInt32 = 1
@@ -176,6 +212,7 @@ enum KeyCodeDisplayName {
     static let space: UInt32 = 49
     static let delete: UInt32 = 51
     static let escape: UInt32 = 53
+    static let function: UInt32 = UInt32(kVK_Function)
 
     private static let knownNames: [UInt32: String] = [
         a: "A",
@@ -198,7 +235,8 @@ enum KeyCodeDisplayName {
         tab: "Tab",
         space: "Space",
         delete: "Delete",
-        escape: "Escape"
+        escape: "Escape",
+        function: "Function/Globe"
     ]
 
     static func name(for keyCode: UInt32) -> String {

@@ -352,6 +352,10 @@ struct ShortcutsTab: View {
                     Text(DictationTriggerMode.holdToRecord.displayName).tag(DictationTriggerMode.holdToRecord)
                     Text(DictationTriggerMode.holdWithSpaceLatch.displayName).tag(DictationTriggerMode.holdWithSpaceLatch)
                 }
+
+                Text("Function/Globe capture depends on Mac hardware and system settings. Use Command, Option, or Control with a regular key for reliable hold shortcuts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             
             Section("Playback Controls") {
@@ -422,30 +426,11 @@ struct ShortcutsTab: View {
     }
 
     private func validationMessage(for shortcut: KeyboardShortcut, replacing action: ShortcutTriggerAction) -> String? {
-        let hasPrimaryModifier = shortcut.modifiers.contains(.command)
-            || shortcut.modifiers.contains(.option)
-            || shortcut.modifiers.contains(.control)
-        guard hasPrimaryModifier else {
-            return "Use Command, Option, or Control."
-        }
-
-        if shortcut.keyCode == KeyCodeDisplayName.escape {
-            return "Escape is reserved."
-        }
-
-        let preferences = appState.settings.shortcuts
-        switch action {
-        case .readSelection:
-            if shortcut.matches(preferences.dictation.shortcut) {
-                return "Already used by Dictation."
-            }
-        case .toggleDictation:
-            if shortcut.matches(preferences.readSelection.shortcut) {
-                return "Already used by Read Selected Text."
-            }
-        }
-
-        return nil
+        ShortcutValidator.validationMessage(
+            for: shortcut,
+            replacing: action,
+            preferences: appState.settings.shortcuts
+        )
     }
 }
 

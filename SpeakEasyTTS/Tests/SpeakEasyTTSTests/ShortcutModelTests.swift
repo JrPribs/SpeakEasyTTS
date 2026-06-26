@@ -58,6 +58,52 @@ struct ShortcutModelTests {
     }
 
     @Test
+    func functionGlobeKeyHasReadableDisplayName() {
+        let shortcut = KeyboardShortcut(keyCode: KeyCodeDisplayName.function, modifiers: [])
+
+        #expect(shortcut.displayName == "Function/Globe")
+    }
+
+    @Test
+    func functionGlobeShortcutIsRejectedUntilCaptureIsProven() {
+        let shortcut = KeyboardShortcut(keyCode: KeyCodeDisplayName.function, modifiers: [])
+
+        #expect(
+            ShortcutValidator.validationMessage(
+                for: shortcut,
+                replacing: .toggleDictation,
+                preferences: .default
+            ) == "Function/Globe is hardware-dependent. Use Command, Option, or Control with a regular key."
+        )
+    }
+
+    @Test
+    func regularKeyWithPrimaryModifierIsAcceptedAsFallbackHoldShortcut() {
+        let shortcut = KeyboardShortcut(keyCode: KeyCodeDisplayName.f, modifiers: [.control])
+
+        #expect(
+            ShortcutValidator.validationMessage(
+                for: shortcut,
+                replacing: .toggleDictation,
+                preferences: .default
+            ) == nil
+        )
+    }
+
+    @Test
+    func shortcutWithoutPrimaryModifierIsRejected() {
+        let shortcut = KeyboardShortcut(keyCode: KeyCodeDisplayName.f, modifiers: [.shift])
+
+        #expect(
+            ShortcutValidator.validationMessage(
+                for: shortcut,
+                replacing: .toggleDictation,
+                preferences: .default
+            ) == "Use Command, Option, or Control with a regular key."
+        )
+    }
+
+    @Test
     func shortcutMatchingIgnoresStoredDisplayName() {
         let first = KeyboardShortcut(keyCode: KeyCodeDisplayName.d, modifiers: .option)
         let second = KeyboardShortcut(keyCode: KeyCodeDisplayName.d, modifiers: .option, displayName: "Custom")

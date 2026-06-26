@@ -408,41 +408,6 @@ final class ClipboardService {
         appContextService.trackFrontmostApp()
     }
 
-    /// Paste text into the user's last focused app, then restore the previous pasteboard contents.
-    func insertTextIntoLastFocusedApp(_ text: String, completion: @escaping (Bool) -> Void) {
-        guard !text.isEmpty else {
-            completion(false)
-            return
-        }
-
-        guard let targetApp = appContextService.targetApplicationForUserInteraction() else {
-            completion(false)
-            return
-        }
-
-        let previousItems = makePasteboardSnapshot()
-
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
-        let didActivate = targetApp.activate(options: [])
-        let pasteDelay: TimeInterval = didActivate ? 0.15 : 0.05
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + pasteDelay) { [weak self] in
-            guard let self else {
-                completion(false)
-                return
-            }
-
-            self.postCommandKey(0x09) // V
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                self.restorePasteboardSnapshot(previousItems)
-                completion(true)
-            }
-        }
-    }
-
     /// Check if accessibility permissions are granted
     func hasAccessibilityPermissions() -> Bool {
         return AXIsProcessTrusted()
@@ -543,26 +508,4 @@ final class ClipboardService {
         keyUp?.post(tap: .cghidEventTap)
     }
 
-    private func makePasteboardSnapshot() -> [NSPasteboardItem] {
-        pasteboard.pasteboardItems?.map { original in
-            let copy = NSPasteboardItem()
-
-            for type in original.types {
-                if let data = original.data(forType: type) {
-                    copy.setData(data, forType: type)
-                } else if let string = original.string(forType: type) {
-                    copy.setString(string, forType: type)
-                }
-            }
-
-            return copy
-        } ?? []
-    }
-
-    private func restorePasteboardSnapshot(_ items: [NSPasteboardItem]) {
-        pasteboard.clearContents()
-
-        guard !items.isEmpty else { return }
-        pasteboard.writeObjects(items)
-    }
 }

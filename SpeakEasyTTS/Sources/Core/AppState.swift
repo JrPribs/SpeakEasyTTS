@@ -73,6 +73,7 @@ final class AppState {
     let clipboardService: ClipboardService
     let claudeCodeService: ClaudeCodeService
     let textSourceService: TextSourceService
+    let textDestinationService: TextDestinationService
     let interactionCoordinator = InteractionCoordinator()
     private let dictationService = DictationService()
     
@@ -103,6 +104,7 @@ final class AppState {
             clipboardService: clipboard,
             claudeCodeService: claudeCode
         )
+        self.textDestinationService = TextDestinationService(appContextService: appContext)
         self.settings = loadedSettings
         self.nativeSpeechService = native
         self.edgeTTSService = edge
@@ -700,7 +702,11 @@ final class AppState {
                     return
                 }
 
-                self.clipboardService.insertTextIntoLastFocusedApp(text, completion: completion)
+                self.textDestinationService.write(
+                    TextDestinationRequest(text: text)
+                ) { result in
+                    completion((try? result.get()) != nil)
+                }
             }
         )
     }

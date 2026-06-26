@@ -69,6 +69,7 @@ final class AppState {
     private var edgeTTSService: EdgeTTSService
     let settingsStore: SettingsStore
     let voiceManager: VoiceManager
+    let appContextService: AppContextService
     let clipboardService: ClipboardService
     let claudeCodeService = ClaudeCodeService()
     let interactionCoordinator = InteractionCoordinator()
@@ -83,6 +84,7 @@ final class AppState {
         // Initialize settings first to know which engine to use
         let store = SettingsStore()
         let loadedSettings = store.loadMigratedSettings()
+        let appContext = AppContextService()
         
         // Initialize both speech services
         let native = NativeSpeechService()
@@ -91,7 +93,8 @@ final class AppState {
         // Store services
         self.settingsStore = store
         self.voiceManager = VoiceManager()
-        self.clipboardService = ClipboardService()
+        self.appContextService = appContext
+        self.clipboardService = ClipboardService(appContextService: appContext)
         self.settings = loadedSettings
         self.nativeSpeechService = native
         self.edgeTTSService = edge
@@ -538,7 +541,7 @@ final class AppState {
     private var lastLoggedTrustedState: Bool?
 
     private func refreshSelectedTextState() {
-        clipboardService.trackFrontmostApp()
+        appContextService.trackFrontmostApp()
         let currentlyTrusted = AXIsProcessTrusted()
         if currentlyTrusted != hasAccessibilityPermissions {
             hasAccessibilityPermissions = currentlyTrusted
@@ -690,7 +693,7 @@ final class AppState {
                 self?.performStopSpeech()
             },
             trackTargetApp: { [weak self] in
-                self?.clipboardService.trackFrontmostApp()
+                self?.appContextService.trackFrontmostApp()
             },
             startDictation: { [weak self] in
                 self?.dictationService.start()

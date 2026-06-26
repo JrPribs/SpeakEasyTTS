@@ -172,8 +172,11 @@ extension Voice.VoiceQuality {
 /// Handles clipboard operations and selected text retrieval
 final class ClipboardService {
     private let pasteboard = NSPasteboard.general
-    /// The last observed non-self frontmost app, used as fallback when our overlay becomes frontmost.
-    private var lastExternalApp: NSRunningApplication?
+    private let appContextService: AppContextService
+
+    init(appContextService: AppContextService = AppContextService()) {
+        self.appContextService = appContextService
+    }
     
     /// Get text from clipboard
     func getText() -> String? {
@@ -220,12 +223,13 @@ final class ClipboardService {
             }
         }
 
-        guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
+        guard let focusedApp = appContextService.currentFrontmostApplication() else {
             return nil
         }
 
         // If another app is frontmost, check its focused element
-        if focusedApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+        if !appContextService.isCurrentApplication(focusedApp) {
+            appContextService.trackFrontmostApp()
             let pid = focusedApp.processIdentifier
             let appElement = AXUIElementCreateApplication(pid)
 
@@ -243,7 +247,7 @@ final class ClipboardService {
         }
 
         // If WE are frontmost (overlay interaction), query the last known external app
-        if let lastApp = lastExternalApp, lastApp.isTerminated == false {
+        if let lastApp = appContextService.lastExternalApplication() {
             let pid = lastApp.processIdentifier
             let appElement = AXUIElementCreateApplication(pid)
             var focusedElement: CFTypeRef?
@@ -365,12 +369,13 @@ final class ClipboardService {
             }
         }
 
-        guard let focusedApp = NSWorkspace.shared.frontmostApplication else {
+        guard let focusedApp = appContextService.currentFrontmostApplication() else {
             return false
         }
 
         // If another app is frontmost, check its focused element
-        if focusedApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+        if !appContextService.isCurrentApplication(focusedApp) {
+            appContextService.trackFrontmostApp()
             let pid = focusedApp.processIdentifier
             let appElement = AXUIElementCreateApplication(pid)
 
@@ -383,8 +388,8 @@ final class ClipboardService {
         }
 
         // If WE are frontmost (overlay interaction), query the last known external app
-        if focusedApp.bundleIdentifier == Bundle.main.bundleIdentifier,
-           let lastApp = lastExternalApp, lastApp.isTerminated == false {
+        if appContextService.isCurrentApplication(focusedApp),
+           let lastApp = appContextService.lastExternalApplication() {
             let pid = lastApp.processIdentifier
             let appElement = AXUIElementCreateApplication(pid)
             var focusedElement: CFTypeRef?
@@ -400,10 +405,7 @@ final class ClipboardService {
     /// Track the frontmost non-self app so we can query it when our overlay is active.
     /// Call this regularly (e.g. from the selection polling timer).
     func trackFrontmostApp() {
-        if let front = NSWorkspace.shared.frontmostApplication,
-           front.bundleIdentifier != Bundle.main.bundleIdentifier {
-            lastExternalApp = front
-        }
+        appContextService.trackFrontmostApp()
     }
 
     /// Paste text into the user's last focused app, then restore the previous pasteboard contents.
@@ -413,16 +415,7 @@ final class ClipboardService {
             return
         }
 
-        let appBundleID = Bundle.main.bundleIdentifier
-        let frontmostApp = NSWorkspace.shared.frontmostApplication
-        let targetApp: NSRunningApplication?
-
-        if let frontmostApp, frontmostApp.bundleIdentifier != appBundleID {
-            lastExternalApp = frontmostApp
-            targetApp = frontmostApp
-        } else if let lastExternalApp, !lastExternalApp.isTerminated {
-            targetApp = lastExternalApp
-        } else {
+        guard let targetApp = appContextService.targetApplicationForUserInteraction() else {
             completion(false)
             return
         }
@@ -432,7 +425,7 @@ final class ClipboardService {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
-        let didActivate = targetApp?.activate(options: []) ?? false
+        let didActivate = targetApp.activate(options: [])
         let pasteDelay: TimeInterval = didActivate ? 0.15 : 0.05
 
         DispatchQueue.main.asyncAfter(deadline: .now() + pasteDelay) { [weak self] in
@@ -458,7 +451,8 @@ final class ClipboardService {
     /// Copy selected text using CGEvent simulation then read clipboard (fallback)
     private func copySelectedTextThenRead(completion: @escaping (String?) -> Void) {
         // If we are frontmost, Cmd+C fallback won't target the user's selected text.
-        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier {
+        if let frontmost = appContextService.currentFrontmostApplication(),
+           appContextService.isCurrentApplication(frontmost) {
             completion(nil)
             return
         }

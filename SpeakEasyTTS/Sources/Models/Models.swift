@@ -123,6 +123,7 @@ struct SpeechSettings: Codable, Equatable {
     var ttsEngine: TTSEngine
     var autoReadOnSelection: Bool
     var autoReadDelay: Double
+    var shortcuts: ShortcutPreferences = .default
     
     /// TTS engine selection
     enum TTSEngine: String, Codable, CaseIterable {
@@ -147,7 +148,8 @@ struct SpeechSettings: Codable, Equatable {
         volume: 1.0,    // Full volume
         ttsEngine: .native,
         autoReadOnSelection: false,  // Disabled by default
-        autoReadDelay: 0.8  // 0.8 second debounce delay
+        autoReadDelay: 0.8,  // 0.8 second debounce delay
+        shortcuts: .default
     )
     
     /// Rate as words per minute (approximate)
@@ -159,6 +161,45 @@ struct SpeechSettings: Codable, Equatable {
     /// Rate display string
     var rateDisplayString: String {
         String(format: "%.1fx", rate * 2)
+    }
+}
+
+extension SpeechSettings {
+    private enum CodingKeys: String, CodingKey {
+        case selectedVoiceId
+        case rate
+        case pitch
+        case volume
+        case ttsEngine
+        case autoReadOnSelection
+        case autoReadDelay
+        case shortcuts
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        selectedVoiceId = try container.decodeIfPresent(String.self, forKey: .selectedVoiceId)
+        rate = try container.decode(Float.self, forKey: .rate)
+        pitch = try container.decode(Float.self, forKey: .pitch)
+        volume = try container.decode(Float.self, forKey: .volume)
+        ttsEngine = try container.decode(TTSEngine.self, forKey: .ttsEngine)
+        autoReadOnSelection = try container.decode(Bool.self, forKey: .autoReadOnSelection)
+        autoReadDelay = try container.decode(Double.self, forKey: .autoReadDelay)
+        shortcuts = try container.decodeIfPresent(ShortcutPreferences.self, forKey: .shortcuts) ?? .default
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encodeIfPresent(selectedVoiceId, forKey: .selectedVoiceId)
+        try container.encode(rate, forKey: .rate)
+        try container.encode(pitch, forKey: .pitch)
+        try container.encode(volume, forKey: .volume)
+        try container.encode(ttsEngine, forKey: .ttsEngine)
+        try container.encode(autoReadOnSelection, forKey: .autoReadOnSelection)
+        try container.encode(autoReadDelay, forKey: .autoReadDelay)
+        try container.encode(shortcuts, forKey: .shortcuts)
     }
 }
 

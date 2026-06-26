@@ -1,14 +1,14 @@
 // ClaudeCodeService.swift
-// Finding and preprocessing Claude Code plan files for TTS
+// Finding Claude Code plan files for TTS
 
 import Foundation
 
-/// Service for reading and preprocessing Claude Code plan files
+/// Service for locating plan files and storing plan readback preferences.
 final class ClaudeCodeService {
-    private let readbackProcessor: ReadbackProcessor
+    private(set) var planReadbackDetailLevel: ReadbackDetailLevel
 
-    init(readbackProcessor: ReadbackProcessor = ReadbackProcessor()) {
-        self.readbackProcessor = readbackProcessor
+    init(planReadbackDetailLevel: ReadbackDetailLevel = .concise) {
+        self.planReadbackDetailLevel = planReadbackDetailLevel
     }
 
     /// Find the most recent Claude Code plan/conversation file
@@ -47,8 +47,7 @@ final class ClaudeCodeService {
         try? String(contentsOf: url, encoding: .utf8)
     }
 
-    /// Preprocess markdown plan text for natural TTS output
-    func preprocessForSpeech(_ markdown: String) -> String {
-        readbackProcessor.preprocessForSpeech(markdown)
+    func updatePlanReadbackDetailLevel(_ detailLevel: ReadbackDetailLevel) {
+        planReadbackDetailLevel = detailLevel
     }
 }

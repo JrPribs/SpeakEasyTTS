@@ -52,7 +52,8 @@ final class TextSourceService {
 
     init(
         clipboardService: ClipboardService,
-        claudeCodeService: ClaudeCodeService
+        claudeCodeService: ClaudeCodeService,
+        readbackPipeline: ReadbackPipeline = ReadbackPipeline()
     ) {
         self.clipboardText = { clipboardService.getText() }
         self.selectedText = { completion in
@@ -60,7 +61,16 @@ final class TextSourceService {
         }
         self.recentPlanURL = { claudeCodeService.findRecentPlan() }
         self.readPlan = { claudeCodeService.readPlan(at: $0) }
-        self.preprocessPlan = { claudeCodeService.preprocessForSpeech($0) }
+        self.preprocessPlan = { markdown in
+            let request = ReadbackRequest(
+                source: InteractionSource(kind: .file, text: markdown),
+                text: markdown,
+                profile: .planSummary,
+                detailLevel: claudeCodeService.planReadbackDetailLevel
+            )
+
+            return readbackPipeline.process(request).spokenText
+        }
     }
 
     init(

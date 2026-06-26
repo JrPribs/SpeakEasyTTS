@@ -144,6 +144,36 @@ struct TextSourceServiceTests {
     }
 
     @Test
+    func productionPlanReaderUsesReadbackPipelinePlanSummary() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let url = directory.appendingPathComponent("plan.md")
+        try """
+        # Plan
+
+        ```swift
+        let value = "summarized"
+        ```
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let service = TextSourceService(
+            clipboardService: ClipboardService(),
+            claudeCodeService: ClaudeCodeService(),
+            readbackPipeline: ReadbackPipeline()
+        )
+        let result = resolveSynchronously(.claudePlanFile(url), service: service)
+        let resolved = try result.get()
+
+        #expect(resolved.text.contains("Plan."))
+        #expect(resolved.text.contains("Swift code block, 1 line. Symbols: value."))
+        #expect(!resolved.text.contains("summarized"))
+        #expect(resolved.source == InteractionSource(kind: .file, text: resolved.text, url: url))
+    }
+
+    @Test
     func missingRecentPlanReturnsRecentPlanError() {
         let service = TextSourceService(recentPlanURL: { nil })
         let result = resolveSynchronously(.recentClaudePlan, service: service)

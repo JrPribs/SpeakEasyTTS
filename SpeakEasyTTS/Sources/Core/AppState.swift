@@ -90,6 +90,7 @@ final class AppState {
         let loadedSettings = store.loadMigratedSettings()
         let appContext = AppContextService()
         let appProfiles = AppProfileService()
+        let readbackPipeline = ReadbackPipeline()
         let clipboard = ClipboardService(appContextService: appContext)
         let claudeCode = ClaudeCodeService()
         
@@ -106,10 +107,11 @@ final class AppState {
         self.claudeCodeService = claudeCode
         self.textSourceService = TextSourceService(
             clipboardService: clipboard,
-            claudeCodeService: claudeCode
+            claudeCodeService: claudeCode,
+            readbackPipeline: readbackPipeline
         )
         self.textDestinationService = TextDestinationService(appContextService: appContext)
-        self.readbackPipeline = ReadbackPipeline()
+        self.readbackPipeline = readbackPipeline
         self.settings = loadedSettings
         self.nativeSpeechService = native
         self.edgeTTSService = edge
@@ -563,6 +565,14 @@ final class AppState {
     }
     
     // MARK: - Claude Code Plan Reading
+
+    var planReadbackDetailLevel: ReadbackDetailLevel {
+        claudeCodeService.planReadbackDetailLevel
+    }
+
+    func updatePlanReadbackDetailLevel(_ detailLevel: ReadbackDetailLevel) {
+        claudeCodeService.updatePlanReadbackDetailLevel(detailLevel)
+    }
 
     /// Auto-find and read the most recent Claude Code plan
     func speakRecentClaudePlan() {

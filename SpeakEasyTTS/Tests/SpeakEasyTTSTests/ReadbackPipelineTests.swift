@@ -83,6 +83,17 @@ struct ReadbackPipelineTests {
     }
 
     @Test
+    func processingOptionsDoNotRequestAISummaryByDefault() {
+        let options = ReadbackProcessingOptions(
+            normalizeMarkdown: true,
+            summarizeCodeBlocks: true,
+            preserveTaskStructure: true
+        )
+
+        #expect(!options.requestAISummary)
+    }
+
+    @Test
     func pipelineReturnsRequestMetadataWithSpokenText() {
         let request = ReadbackRequest(
             source: InteractionSource(kind: .clipboard, text: "Clipboard text"),
@@ -248,6 +259,60 @@ struct ReadbackPipelineTests {
         #expect(!spoken.contains("let value"))
     }
 
+    @Test
+    func optionalAISummaryUsesProviderWhenRequested() async {
+        let service = StubAIInteractionService(response: AIReadbackSummaryResponse(summaryText: "AI summary."))
+        let request = aiSummaryRequest(text: "# Title\n\nBody")
+        let result = await ReadbackPipeline(aiInteractionService: service)
+            .processWithOptionalSummary(request)
+
+        #expect(result.spokenText == "AI summary.")
+        #expect(service.requests == [
+            AIReadbackSummaryRequest(
+                readbackRequest: request,
+                deterministicText: "Title.\n\nBody."
+            )
+        ])
+    }
+
+    @Test
+    func optionalAISummaryDoesNotCallProviderUnlessRequested() async {
+        let service = StubAIInteractionService(response: AIReadbackSummaryResponse(summaryText: "AI summary."))
+        let request = ReadbackRequest(
+            source: InteractionSource(kind: .selectedText, text: "# Title"),
+            text: "# Title",
+            profile: .technicalResponse
+        )
+        let result = await ReadbackPipeline(aiInteractionService: service)
+            .processWithOptionalSummary(request)
+
+        #expect(result.spokenText == "Title.")
+        #expect(service.requests.isEmpty)
+    }
+
+    @Test
+    func optionalAISummaryFallsBackWithoutProvider() async {
+        let request = aiSummaryRequest(text: "# Title")
+        let result = await ReadbackPipeline().processWithOptionalSummary(request)
+
+        #expect(result.spokenText == "Title.")
+    }
+
+    @Test
+    func optionalAISummaryFallsBackWhenProviderFailsOrReturnsEmptyText() async {
+        let failingService = StubAIInteractionService(error: StubAIError.unavailable)
+        let emptyService = StubAIInteractionService(response: AIReadbackSummaryResponse(summaryText: "   "))
+        let request = aiSummaryRequest(text: "# Title")
+
+        let failedResult = await ReadbackPipeline(aiInteractionService: failingService)
+            .processWithOptionalSummary(request)
+        let emptyResult = await ReadbackPipeline(aiInteractionService: emptyService)
+            .processWithOptionalSummary(request)
+
+        #expect(failedResult.spokenText == "Title.")
+        #expect(emptyResult.spokenText == "Title.")
+    }
+
     private func normalize(_ text: String) -> String {
         let request = ReadbackRequest(
             source: InteractionSource(kind: .selectedText, text: text),
@@ -266,6 +331,20 @@ struct ReadbackPipelineTests {
         )
 
         return ReadbackPipeline().process(request).spokenText
+    }
+
+    private func aiSummaryRequest(text: String) -> ReadbackRequest {
+        ReadbackRequest(
+            source: InteractionSource(kind: .selectedText, text: text),
+            text: text,
+            profile: .technicalResponse,
+            processingOptions: ReadbackProcessingOptions(
+                normalizeMarkdown: true,
+                summarizeCodeBlocks: true,
+                preserveTaskStructure: true,
+                requestAISummary: true
+            )
+        )
     }
 
     private func fixtureURL(_ name: String) throws -> URL {
@@ -291,4 +370,32 @@ struct ReadbackPipelineTests {
     private enum FixtureError: Error {
         case missingFixture(String)
     }
+}
+
+private final class StubAIInteractionService: AIInteractionService {
+    private(set) var requests: [AIReadbackSummaryRequest] = []
+    private let response: AIReadbackSummaryResponse?
+    private let error: Error?
+
+    init(
+        response: AIReadbackSummaryResponse? = nil,
+        error: Error? = nil
+    ) {
+        self.response = response
+        self.error = error
+    }
+
+    func summarizeReadback(_ request: AIReadbackSummaryRequest) async throws -> AIReadbackSummaryResponse {
+        requests.append(request)
+
+        if let error {
+            throw error
+        }
+
+        return response ?? AIReadbackSummaryResponse(summaryText: "")
+    }
+}
+
+private enum StubAIError: Error {
+    case unavailable
 }

@@ -61,21 +61,25 @@ struct ReadbackProcessingOptions: Codable, Equatable, Hashable {
     var normalizeMarkdown: Bool
     var summarizeCodeBlocks: Bool
     var preserveTaskStructure: Bool
+    var requestAISummary: Bool
 
     static let preserveInput = ReadbackProcessingOptions(
         normalizeMarkdown: false,
         summarizeCodeBlocks: false,
-        preserveTaskStructure: false
+        preserveTaskStructure: false,
+        requestAISummary: false
     )
 
     init(
         normalizeMarkdown: Bool,
         summarizeCodeBlocks: Bool,
-        preserveTaskStructure: Bool
+        preserveTaskStructure: Bool,
+        requestAISummary: Bool = false
     ) {
         self.normalizeMarkdown = normalizeMarkdown
         self.summarizeCodeBlocks = summarizeCodeBlocks
         self.preserveTaskStructure = preserveTaskStructure
+        self.requestAISummary = requestAISummary
     }
 }
 

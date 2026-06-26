@@ -4,7 +4,40 @@
 import Foundation
 
 struct ReadbackPipeline {
+    private let aiInteractionService: AIInteractionService?
+
+    init(aiInteractionService: AIInteractionService? = nil) {
+        self.aiInteractionService = aiInteractionService
+    }
+
     func process(_ request: ReadbackRequest) -> ReadbackResult {
+        deterministicProcess(request)
+    }
+
+    func processWithOptionalSummary(_ request: ReadbackRequest) async -> ReadbackResult {
+        let fallback = deterministicProcess(request)
+        guard request.processingOptions.requestAISummary,
+              let aiInteractionService else {
+            return fallback
+        }
+
+        do {
+            let response = try await aiInteractionService.summarizeReadback(AIReadbackSummaryRequest(
+                readbackRequest: request,
+                deterministicText: fallback.spokenText
+            ))
+            let summary = response.summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !summary.isEmpty else {
+                return fallback
+            }
+
+            return ReadbackResult(request: request, spokenText: summary)
+        } catch {
+            return fallback
+        }
+    }
+
+    private func deterministicProcess(_ request: ReadbackRequest) -> ReadbackResult {
         var spokenText = request.text
 
         if request.processingOptions.normalizeMarkdown {

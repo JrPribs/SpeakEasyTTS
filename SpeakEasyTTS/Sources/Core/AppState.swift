@@ -81,12 +81,14 @@ final class AppState {
     let readbackPipeline: ReadbackPipeline
     let aiInteractionService: AIInteractionService
     let conversationStore: ConversationStore
+    let permissionService: PermissionService
     let interactionCoordinator = InteractionCoordinator()
     private let dictationService = DictationService()
     
     // MARK: - Private
     private var cancellables = Set<AnyCancellable>()
     var aiProviderStatus: AIProviderStatus
+    var permissionDiagnostics: [PermissionDiagnostic] = []
     
     // MARK: - Initialization
     
@@ -98,6 +100,7 @@ final class AppState {
         let appContext = AppContextService()
         let appProfiles = AppProfileService()
         let conversationStore = ConversationStore()
+        let permissionService = PermissionService()
         let aiInteractionService = AIProviderBackedInteractionService(
             provider: OllamaProvider(),
             conversationStore: conversationStore
@@ -127,6 +130,7 @@ final class AppState {
         self.readbackPipeline = readbackPipeline
         self.aiInteractionService = aiInteractionService
         self.conversationStore = conversationStore
+        self.permissionService = permissionService
         self.settings = loadedSettings
         self.aiProviderStatus = aiStore.loadStatus()
         self.conversationHistoryEnabled = conversationStore.isHistoryEnabled()
@@ -185,7 +189,7 @@ final class AppState {
     
     /// Check current accessibility permission status
     func checkAccessibilityPermissions() {
-        let granted = AXIsProcessTrusted()
+        let granted = permissionService.hasAccessibilityPermissions()
         
         if granted != hasAccessibilityPermissions {
             hasAccessibilityPermissions = granted
@@ -200,18 +204,33 @@ final class AppState {
                 updateSelectionState(false)
             }
         }
+
+        refreshPermissionDiagnostics()
     }
     
     /// Request accessibility permissions (opens System Preferences)
     func requestAccessibilityPermissions() {
-        let promptOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        let _ = AXIsProcessTrustedWithOptions(promptOptions as CFDictionary)
+        permissionService.requestAccessibilityPermissions()
     }
     
     /// Open System Preferences to Accessibility settings
     func openAccessibilitySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
+        permissionService.openSystemSettings(for: .accessibility)
+    }
+
+    func refreshPermissionDiagnostics() {
+        refreshAIProviderStatus(refreshPermissions: false)
+        permissionDiagnostics = permissionService.diagnostics(aiProviderStatus: aiProviderStatus)
+    }
+
+    func performPermissionRecovery(_ action: PermissionRecoveryAction) {
+        switch action {
+        case .openSystemSettings(_, let url):
+            permissionService.openSystemSettings(url: url)
+        case .requestAccessibilityPrompt:
+            requestAccessibilityPermissions()
+        case .resetAIProvider:
+            resetAIProviderStatus()
         }
     }
     
@@ -258,8 +277,11 @@ final class AppState {
         saveSettings()
     }
 
-    func refreshAIProviderStatus() {
+    func refreshAIProviderStatus(refreshPermissions: Bool = true) {
         aiProviderStatus = aiProviderStore.loadStatus()
+        if refreshPermissions {
+            permissionDiagnostics = permissionService.diagnostics(aiProviderStatus: aiProviderStatus)
+        }
     }
 
     func resetAIProviderStatus() {
@@ -784,9 +806,10 @@ final class AppState {
 
     private func refreshSelectedTextState() {
         appContextService.trackFrontmostApp()
-        let currentlyTrusted = AXIsProcessTrusted()
+        let currentlyTrusted = permissionService.hasAccessibilityPermissions()
         if currentlyTrusted != hasAccessibilityPermissions {
             hasAccessibilityPermissions = currentlyTrusted
+            refreshPermissionDiagnostics()
             if currentlyTrusted {
                 registerConfiguredHotkeys()
             } else {

@@ -39,6 +39,12 @@ struct SettingsView: View {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
 
+            PermissionsSettingsTab()
+                .environment(appState)
+                .tabItem {
+                    Label("Permissions", systemImage: "lock.shield")
+                }
+
             AISettingsTab()
                 .environment(appState)
                 .tabItem {

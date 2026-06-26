@@ -39,27 +39,6 @@ struct ShortcutsTab: View {
                 }
             }
 
-            Section("Accessibility") {
-                HStack {
-                    Text("Status")
-                    Spacer()
-                    if appState.hasAccessibilityPermissions {
-                        Label("Granted", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        Label("Not Granted", systemImage: "xmark.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                }
-
-                Text("Global shortcuts, text selection detection, and dictation insertion require Accessibility permissions.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Button("Open Accessibility Settings") {
-                    appState.openAccessibilitySettings()
-                }
-            }
         }
         .formStyle(.grouped)
         .padding()

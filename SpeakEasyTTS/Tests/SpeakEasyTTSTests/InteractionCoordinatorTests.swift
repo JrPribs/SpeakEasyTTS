@@ -408,6 +408,181 @@ struct InteractionCoordinatorTests {
         #expect(coordinator.activeSession?.failure?.recoverySuggestion == "Try another voice.")
     }
 
+    @Test
+    func askAIFromIdleStartsRecordingWithoutDestinationLookupOrInsertion() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(playbackState: .playing)
+        var emittedSessions: [InteractionSession] = []
+        coordinator.onSessionChange = { session in
+            if let session {
+                emittedSessions.append(session)
+                harness.events.append("session:\(session.state.rawValue)")
+            }
+        }
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+
+        #expect(harness.events == [
+            "trackTargetApp",
+            "session:preparing",
+            "stopPlayback",
+            "startDictation"
+        ])
+        #expect(emittedSessions.first?.mode == .askAI)
+        #expect(emittedSessions.first?.source.kind == .microphone)
+        #expect(emittedSessions.first?.source.appContext == harness.targetContext)
+        #expect(emittedSessions.first?.destination == .reviewPanel)
+        #expect(harness.promptRequests.isEmpty)
+    }
+
+    @Test
+    func askAIStopSubmitsTrimmedTranscriptInsteadOfInserting() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Here is the answer.", conversationID: "conversation-1", modelName: "test-model"))
+        ])
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "  What should I do?  ",
+            isFinal: false,
+            dependencies: harness.dependencies()
+        )
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+
+        #expect(harness.promptRequests == [
+            AIPromptRequest(
+                prompt: "What should I do?",
+                appContext: harness.targetContext,
+                metadata: ["mode": "askAI"]
+            )
+        ])
+        #expect(coordinator.activeSession?.state == .awaitingUserReview)
+        #expect(coordinator.activeSession?.transcript == "What should I do?")
+        #expect(coordinator.activeSession?.generatedText == "Here is the answer.")
+        #expect(coordinator.activeSession?.destination == .reviewPanel)
+    }
+
+    @Test
+    func askAINaturalFinalTranscriptSubmitsOnce() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Final answer."))
+        ])
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "final prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+        coordinator.handleAskAITranscript(
+            "final prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+
+        #expect(harness.promptRequests.count == 1)
+        #expect(coordinator.activeSession?.state == .awaitingUserReview)
+        #expect(coordinator.activeSession?.generatedText == "Final answer.")
+    }
+
+    @Test
+    func askAIEmptyTranscriptFailsWithoutCallingProvider() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness()
+        var errorMessages: [String?] = []
+        coordinator.onDictationErrorMessageChange = { message in
+            errorMessages.append(message)
+        }
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+
+        #expect(harness.promptRequests.isEmpty)
+        #expect(coordinator.activeSession?.state == .failed)
+        #expect(coordinator.activeSession?.failure?.reason == .emptyInput)
+        #expect(errorMessages.contains { $0 == "No prompt captured." })
+    }
+
+    @Test
+    func askAIProviderUnavailableFailsSessionAndEmitsUserVisibleError() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .failure(AIProviderError.notConfigured)
+        ])
+        var errorMessages: [String?] = []
+        coordinator.onDictationErrorMessageChange = { message in
+            errorMessages.append(message)
+        }
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: false,
+            dependencies: harness.dependencies()
+        )
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+
+        #expect(coordinator.activeSession?.state == .failed)
+        #expect(coordinator.activeSession?.failure?.reason == .providerUnavailable)
+        #expect(coordinator.activeSession?.failure?.message == "AI provider is not configured.")
+        #expect(errorMessages.contains { $0 == "AI provider is not configured." })
+    }
+
+    @Test
+    func askAICancellationIgnoresLateProviderResponse() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(completesPromptImmediately: false)
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: false,
+            dependencies: harness.dependencies()
+        )
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+
+        #expect(coordinator.activeSession?.state == .processing)
+
+        coordinator.cancelAskAI(dependencies: harness.dependencies())
+        harness.completeNextPrompt(.success(AIPromptResponse(text: "Too late.")))
+
+        #expect(coordinator.activeSession?.state == .cancelled)
+        #expect(coordinator.activeSession?.generatedText == nil)
+    }
+
+    @Test
+    func askAIReadResponseDelegatesSpeechAndCompletesWhenPlaybackReturnsIdle() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Read this answer."))
+        ])
+        var spokenText: String?
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+        coordinator.readActiveAIResponse { text in
+            spokenText = text
+        }
+        coordinator.updatePlaybackState(.playing)
+        coordinator.updatePlaybackState(.idle)
+
+        #expect(spokenText == "Read this answer.")
+        #expect(coordinator.activeSession?.state == .completed)
+        #expect(coordinator.activeSession?.destination == .speech)
+    }
+
     private func makeCoordinator() -> InteractionCoordinator {
         InteractionCoordinator(
             makeID: { UUID(uuidString: "00000000-0000-0000-0000-000000000003")! },
@@ -517,5 +692,78 @@ private final class DictationHarness {
         guard !insertResults.isEmpty else { return true }
 
         return insertResults.removeFirst()
+    }
+}
+
+private final class AskAIHarness {
+    let targetContext = AppContext(
+        bundleIdentifier: "com.example.Target",
+        appName: "Target",
+        processIdentifier: 456,
+        capturedAt: Date(timeIntervalSince1970: 3_100)
+    )
+    var playbackState: PlaybackState
+    var events: [String] = []
+    var promptRequests: [AIPromptRequest] = []
+    private var promptResults: [Result<AIPromptResponse, Error>]
+    private var pendingPromptCompletions: [(Result<AIPromptResponse, Error>) -> Void] = []
+    private let completesPromptImmediately: Bool
+
+    init(
+        playbackState: PlaybackState = .idle,
+        promptResults: [Result<AIPromptResponse, Error>] = [
+            .success(AIPromptResponse(text: "AI response."))
+        ],
+        completesPromptImmediately: Bool = true
+    ) {
+        self.playbackState = playbackState
+        self.promptResults = promptResults
+        self.completesPromptImmediately = completesPromptImmediately
+    }
+
+    func dependencies() -> InteractionCoordinator.AskAIDependencies {
+        InteractionCoordinator.AskAIDependencies(
+            playbackState: { [self] in
+                playbackState
+            },
+            stopPlayback: { [self] in
+                events.append("stopPlayback")
+                playbackState = .idle
+            },
+            trackTargetApp: { [self] in
+                events.append("trackTargetApp")
+                return targetContext
+            },
+            startDictation: { [self] in
+                events.append("startDictation")
+            },
+            stopDictation: { [self] in
+                events.append("stopDictation")
+            },
+            completePrompt: { [self] request, completion in
+                events.append("completePrompt:\(request.prompt)")
+                promptRequests.append(request)
+
+                if completesPromptImmediately {
+                    completion(nextPromptResult())
+                } else {
+                    pendingPromptCompletions.append(completion)
+                }
+            }
+        )
+    }
+
+    func completeNextPrompt(_ result: Result<AIPromptResponse, Error>) {
+        guard !pendingPromptCompletions.isEmpty else { return }
+
+        pendingPromptCompletions.removeFirst()(result)
+    }
+
+    private func nextPromptResult() -> Result<AIPromptResponse, Error> {
+        guard !promptResults.isEmpty else {
+            return .success(AIPromptResponse(text: "AI response."))
+        }
+
+        return promptResults.removeFirst()
     }
 }

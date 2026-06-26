@@ -422,6 +422,14 @@ private final class StubAIInteractionService: AIInteractionService {
         self.error = error
     }
 
+    func completePrompt(_ request: AIPromptRequest) async throws -> AIPromptResponse {
+        if let error {
+            throw error
+        }
+
+        return AIPromptResponse(text: response?.summaryText ?? "")
+    }
+
     func summarizeReadback(_ request: AIReadbackSummaryRequest) async throws -> AIReadbackSummaryResponse {
         requests.append(request)
 

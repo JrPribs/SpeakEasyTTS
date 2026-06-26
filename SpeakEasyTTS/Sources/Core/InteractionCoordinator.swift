@@ -22,6 +22,18 @@ final class InteractionCoordinator {
         ) -> Void
     }
 
+    struct AskAIDependencies {
+        var playbackState: () -> PlaybackState
+        var stopPlayback: () -> Void
+        var trackTargetApp: () -> AppContext?
+        var startDictation: () -> Void
+        var stopDictation: () -> Void
+        var completePrompt: (
+            _ request: AIPromptRequest,
+            _ completion: @escaping (Result<AIPromptResponse, Error>) -> Void
+        ) -> Void
+    }
+
     private(set) var activeSession: InteractionSession?
     private(set) var dictationState: DictationState = .idle
     private(set) var dictationTriggerState: DictationTriggerState = .inactive
@@ -36,6 +48,7 @@ final class InteractionCoordinator {
     private let makeID: () -> UUID
     private let now: () -> Date
     private var hasInsertedCurrentDictation = false
+    private var hasSubmittedCurrentAskAI = false
 
     init(
         makeID: @escaping () -> UUID = { UUID() },
@@ -47,6 +60,11 @@ final class InteractionCoordinator {
 
     /// Toggle native speech-to-text dictation. Completed text is pasted into the last focused app.
     func toggleDictation(dependencies: DictationDependencies) {
+        if dictationState != .idle,
+           activeSession?.mode != .dictateVerbatim {
+            return
+        }
+
         setDictationTriggerState(.inactive, syncSession: false)
 
         switch dictationState {
@@ -110,6 +128,83 @@ final class InteractionCoordinator {
         insertDictatedText(textToInsert, dependencies: dependencies)
     }
 
+    func toggleAskAI(dependencies: AskAIDependencies) {
+        if activeSession?.mode == .askAI,
+           activeSession?.state == .processing {
+            return
+        }
+
+        if dictationState != .idle,
+           activeSession?.mode != .askAI {
+            return
+        }
+
+        setDictationTriggerState(.inactive, syncSession: false)
+
+        switch dictationState {
+        case .idle:
+            startAskAI(dependencies: dependencies)
+        case .authorizing, .recording:
+            stopAskAIAndSubmit(dependencies: dependencies)
+        }
+    }
+
+    func startAskAI(dependencies: AskAIDependencies) {
+        guard dictationState == .idle else { return }
+
+        setDictationTranscript("")
+        hasSubmittedCurrentAskAI = false
+        setDictationErrorMessage(nil)
+        let targetApp = dependencies.trackTargetApp()
+
+        let date = now()
+        emit(InteractionSession(
+            id: makeID(),
+            mode: .askAI,
+            state: .preparing,
+            targetApp: targetApp,
+            source: InteractionSource(kind: .microphone, appContext: targetApp),
+            destination: .reviewPanel,
+            createdAt: date,
+            updatedAt: date
+        ))
+
+        if dependencies.playbackState() != .idle {
+            dependencies.stopPlayback()
+        }
+
+        dependencies.startDictation()
+    }
+
+    func stopAskAIAndSubmit(dependencies: AskAIDependencies) {
+        let prompt = dictationTranscript
+        setDictationTriggerState(.inactive, syncSession: false)
+
+        guard activeSession?.mode == .askAI,
+              activeSession?.state.isTerminal == false else {
+            dependencies.stopDictation()
+            setDictationState(.idle)
+            return
+        }
+
+        dependencies.stopDictation()
+        setDictationState(.idle)
+        submitAskAIPrompt(prompt, dependencies: dependencies)
+    }
+
+    func cancelAskAI(dependencies: AskAIDependencies) {
+        setDictationTriggerState(.inactive, syncSession: false)
+        cancelActiveSession(
+            message: "Ask AI cancelled.",
+            performCancel: {
+                dependencies.stopDictation()
+            }
+        )
+        setDictationState(.idle)
+        setDictationTranscript("")
+        hasSubmittedCurrentAskAI = false
+    }
+
     func beginHoldDictation(canLatch: Bool, dependencies: DictationDependencies) {
         if dictationTriggerState == .latched {
             stopDictationAndInsert(dependencies: dependencies)
@@ -171,7 +266,7 @@ final class InteractionCoordinator {
     func handleDictationStateChange(_ state: DictationState) {
         setDictationState(state)
 
-        guard activeSession?.mode == .dictateVerbatim,
+        guard isActiveRecordingSession,
               activeSession?.state.isTerminal == false else {
             return
         }
@@ -211,6 +306,25 @@ final class InteractionCoordinator {
         }
     }
 
+    func handleAskAITranscript(
+        _ transcript: String,
+        isFinal: Bool,
+        dependencies: AskAIDependencies
+    ) {
+        guard activeSession?.mode == .askAI,
+              activeSession?.state.isTerminal == false else {
+            return
+        }
+
+        setDictationTranscript(transcript)
+
+        if isFinal {
+            dependencies.stopDictation()
+            setDictationState(.idle)
+            submitAskAIPrompt(transcript, dependencies: dependencies)
+        }
+    }
+
     func handleDictationError(_ message: String) {
         setDictationErrorMessage(message)
         setDictationState(.idle)
@@ -221,6 +335,7 @@ final class InteractionCoordinator {
         )
         setDictationTranscript("")
         hasInsertedCurrentDictation = false
+        hasSubmittedCurrentAskAI = false
     }
 
     func beginReadback(
@@ -251,7 +366,7 @@ final class InteractionCoordinator {
     }
 
     func updatePlaybackState(_ playbackState: PlaybackState) {
-        guard activeSession?.mode == .readback,
+        guard isActiveSpeechPlaybackSession,
               activeSession?.state.isTerminal == false else {
             return
         }
@@ -266,6 +381,21 @@ final class InteractionCoordinator {
                 session.state = .reading
             }
         }
+    }
+
+    func readActiveAIResponse(performReadback: (String) -> Void) {
+        guard activeSession?.mode == .askAI,
+              activeSession?.state.isTerminal == false,
+              let generatedText = activeSession?.generatedText?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !generatedText.isEmpty else {
+            return
+        }
+
+        updateActiveSession { session in
+            session.state = .reading
+            session.destination = .speech
+        }
+        performReadback(generatedText)
     }
 
     func cancelActiveSession(
@@ -374,6 +504,73 @@ final class InteractionCoordinator {
         }
     }
 
+    private func submitAskAIPrompt(
+        _ prompt: String,
+        dependencies: AskAIDependencies
+    ) {
+        let normalized = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            let message = "No prompt captured."
+            setDictationErrorMessage(message)
+            failActiveSession(
+                reason: .emptyInput,
+                message: message
+            )
+            return
+        }
+
+        guard !hasSubmittedCurrentAskAI else { return }
+
+        hasSubmittedCurrentAskAI = true
+        let appContext = activeSession?.targetApp
+        updateActiveSession { session in
+            session.state = .processing
+            session.transcript = normalized
+        }
+
+        dependencies.completePrompt(AIPromptRequest(
+            prompt: normalized,
+            appContext: appContext,
+            metadata: ["mode": InteractionMode.askAI.rawValue]
+        )) { [weak self] result in
+            guard let self,
+                  self.activeSession?.mode == .askAI,
+                  self.activeSession?.state == .processing else {
+                return
+            }
+
+            switch result {
+            case .success(let response):
+                let text = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else {
+                    self.hasSubmittedCurrentAskAI = false
+                    let message = "AI provider returned an empty response."
+                    self.setDictationErrorMessage(message)
+                    self.failActiveSession(
+                        reason: .providerUnavailable,
+                        message: message
+                    )
+                    return
+                }
+
+                self.setDictationTranscript(normalized)
+                self.updateActiveSession { session in
+                    session.state = .awaitingUserReview
+                    session.generatedText = text
+                    session.destination = .reviewPanel
+                }
+            case .failure(let error):
+                self.hasSubmittedCurrentAskAI = false
+                let message = error.localizedDescription
+                self.setDictationErrorMessage(message)
+                self.failActiveSession(
+                    reason: .providerUnavailable,
+                    message: message
+                )
+            }
+        }
+    }
+
     private func setDictationState(_ state: DictationState) {
         guard dictationState != state else { return }
 
@@ -412,7 +609,7 @@ final class InteractionCoordinator {
     }
 
     private func updateActiveDictationSession(_ update: (inout InteractionSession) -> Void) {
-        guard activeSession?.mode == .dictateVerbatim,
+        guard isActiveRecordingSession,
               activeSession?.state.isTerminal == false else {
             return
         }
@@ -431,5 +628,13 @@ final class InteractionCoordinator {
     private func emit(_ session: InteractionSession?) {
         activeSession = session
         onSessionChange?(session)
+    }
+
+    private var isActiveRecordingSession: Bool {
+        activeSession?.mode == .dictateVerbatim || activeSession?.mode == .askAI
+    }
+
+    private var isActiveSpeechPlaybackSession: Bool {
+        activeSession?.mode == .readback || activeSession?.mode == .askAI
     }
 }

@@ -77,6 +77,7 @@ final class AppState {
     let textSourceService: TextSourceService
     let textDestinationService: TextDestinationService
     let readbackPipeline: ReadbackPipeline
+    let aiInteractionService: AIInteractionService
     let interactionCoordinator = InteractionCoordinator()
     private let dictationService = DictationService()
     
@@ -93,7 +94,8 @@ final class AppState {
         let loadedSettings = store.loadMigratedSettings()
         let appContext = AppContextService()
         let appProfiles = AppProfileService()
-        let readbackPipeline = ReadbackPipeline()
+        let aiInteractionService = AIProviderBackedInteractionService(provider: OllamaProvider())
+        let readbackPipeline = ReadbackPipeline(aiInteractionService: aiInteractionService)
         let clipboard = ClipboardService(appContextService: appContext)
         let claudeCode = ClaudeCodeService()
         
@@ -116,6 +118,7 @@ final class AppState {
         )
         self.textDestinationService = TextDestinationService(appContextService: appContext)
         self.readbackPipeline = readbackPipeline
+        self.aiInteractionService = aiInteractionService
         self.settings = loadedSettings
         self.aiProviderStatus = aiStore.loadStatus()
         self.nativeSpeechService = native
@@ -469,7 +472,10 @@ final class AppState {
             cancelDictation()
         case .readback:
             stop()
-        case .askAI, .transformText:
+        case .askAI:
+            interactionCoordinator.cancelAskAI(dependencies: askAIDependencies)
+            performStopSpeech()
+        case .transformText:
             interactionCoordinator.cancelActiveSession(
                 message: "Interaction cancelled.",
                 performCancel: {}
@@ -527,6 +533,18 @@ final class AppState {
     /// Stop dictation without inserting text.
     func cancelDictation() {
         interactionCoordinator.cancelDictation(dependencies: dictationDependencies)
+    }
+
+    // MARK: - Ask AI Control
+
+    func toggleAskAI() {
+        interactionCoordinator.toggleAskAI(dependencies: askAIDependencies)
+    }
+
+    func readCurrentAIResponse() {
+        interactionCoordinator.readActiveAIResponse { [weak self] text in
+            self?.performSpeak(text)
+        }
     }
     
     // MARK: - Settings
@@ -750,11 +768,19 @@ final class AppState {
             DispatchQueue.main.async {
                 guard let self else { return }
 
-                self.interactionCoordinator.handleDictationTranscript(
-                    transcript,
-                    isFinal: isFinal,
-                    dependencies: self.dictationDependencies
-                )
+                if self.interactionCoordinator.activeSession?.mode == .askAI {
+                    self.interactionCoordinator.handleAskAITranscript(
+                        transcript,
+                        isFinal: isFinal,
+                        dependencies: self.askAIDependencies
+                    )
+                } else {
+                    self.interactionCoordinator.handleDictationTranscript(
+                        transcript,
+                        isFinal: isFinal,
+                        dependencies: self.dictationDependencies
+                    )
+                }
             }
         }
 
@@ -804,6 +830,45 @@ final class AppState {
                         completion(.failure(InteractionCoordinator.TextInsertionFailure(
                             message: error.localizedDescription
                         )))
+                    }
+                }
+            }
+        )
+    }
+
+    private var askAIDependencies: InteractionCoordinator.AskAIDependencies {
+        InteractionCoordinator.AskAIDependencies(
+            playbackState: { [weak self] in
+                self?.playbackState ?? .idle
+            },
+            stopPlayback: { [weak self] in
+                self?.performStopSpeech()
+            },
+            trackTargetApp: { [weak self] in
+                self?.appContextService.targetAppContextForUserInteraction()
+            },
+            startDictation: { [weak self] in
+                self?.dictationService.start()
+            },
+            stopDictation: { [weak self] in
+                self?.dictationService.stop()
+            },
+            completePrompt: { [weak self] request, completion in
+                guard let self else {
+                    completion(.failure(AIProviderError.cancelled))
+                    return
+                }
+
+                Task {
+                    do {
+                        let response = try await self.aiInteractionService.completePrompt(request)
+                        await MainActor.run {
+                            completion(.success(response))
+                        }
+                    } catch {
+                        await MainActor.run {
+                            completion(.failure(error))
+                        }
                     }
                 }
             }

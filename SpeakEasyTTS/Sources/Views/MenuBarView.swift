@@ -22,6 +22,11 @@ struct MenuBarView: View {
             dictationSection
 
             Divider()
+
+            // Voice prompt mode
+            askAISection
+
+            Divider()
             
             // Quick text input
             quickInputSection
@@ -103,6 +108,19 @@ struct MenuBarView: View {
             && appState.canCancelActiveInteraction
     }
 
+    private var isAskAISessionActive: Bool {
+        appState.activeInteractionSession?.mode == .askAI
+            && appState.activeInteractionSession?.state.isTerminal == false
+    }
+
+    private var canReadAIResponse: Bool {
+        if let response = appState.activeInteractionSession?.generatedText?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            return isAskAISessionActive && !response.isEmpty
+        }
+
+        return false
+    }
+
     // MARK: - Dictation Section
 
     private var dictationSection: some View {
@@ -164,6 +182,106 @@ struct MenuBarView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
+    }
+
+    // MARK: - Ask AI Section
+
+    private var askAISection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Ask AI", systemImage: "sparkles")
+                    .font(.subheadline)
+                    .foregroundStyle(isAskAISessionActive ? Color.accentColor : Color.secondary)
+
+                Spacer()
+
+                if appState.activeInteractionSession?.mode == .askAI,
+                   appState.activeInteractionSession?.state == .processing {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    appState.toggleAskAI()
+                } label: {
+                    Label(
+                        askAIButtonTitle,
+                        systemImage: appState.dictationState == .idle ? "mic.badge.plus" : "paperplane.fill"
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isAskAIProcessing || (appState.dictationState != .idle && !isAskAISessionActive))
+
+                if isAskAISessionActive {
+                    Button("Cancel") {
+                        appState.cancelActiveInteraction()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                if canReadAIResponse {
+                    Button {
+                        appState.readCurrentAIResponse()
+                    } label: {
+                        Label("Read", systemImage: "speaker.wave.2.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                Spacer()
+            }
+
+            if appState.activeInteractionSession?.mode == .askAI,
+               let prompt = nonEmpty(appState.activeInteractionSession?.transcript) {
+                Text(prompt)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+            }
+
+            if let response = nonEmpty(appState.activeInteractionSession?.generatedText),
+               appState.activeInteractionSession?.mode == .askAI {
+                Text(response)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+    }
+
+    private var askAIButtonTitle: String {
+        guard isAskAISessionActive else { return "Start Prompt" }
+
+        switch appState.activeInteractionSession?.state {
+        case .preparing, .recording:
+            return "Send Prompt"
+        case .processing:
+            return "Processing"
+        case .awaitingUserReview, .reading:
+            return "Ask Again"
+        case .idle, .inserting, .completed, .failed, .cancelled, .transcribing, .none:
+            return "Start Prompt"
+        }
+    }
+
+    private var isAskAIProcessing: Bool {
+        appState.activeInteractionSession?.mode == .askAI
+            && appState.activeInteractionSession?.state == .processing
     }
     
     // MARK: - Quick Input Section
@@ -500,6 +618,11 @@ struct MenuBarView: View {
         let minutes = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", minutes, secs)
+    }
+
+    private func nonEmpty(_ text: String?) -> String? {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
     
     private func openInputWindow() {

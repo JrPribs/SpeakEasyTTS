@@ -26,6 +26,8 @@ final class AppState {
     var dictationTriggerState: DictationTriggerState = .inactive
     var dictationTranscript: String = ""
     var activeInteractionSession: InteractionSession?
+    var conversationHistoryEnabled: Bool = false
+    var conversationTurnCount: Int = 0
 
     var isDictationHeld: Bool {
         if case .holding = dictationTriggerState {
@@ -78,6 +80,7 @@ final class AppState {
     let textDestinationService: TextDestinationService
     let readbackPipeline: ReadbackPipeline
     let aiInteractionService: AIInteractionService
+    let conversationStore: ConversationStore
     let interactionCoordinator = InteractionCoordinator()
     private let dictationService = DictationService()
     
@@ -94,7 +97,11 @@ final class AppState {
         let loadedSettings = store.loadMigratedSettings()
         let appContext = AppContextService()
         let appProfiles = AppProfileService()
-        let aiInteractionService = AIProviderBackedInteractionService(provider: OllamaProvider())
+        let conversationStore = ConversationStore()
+        let aiInteractionService = AIProviderBackedInteractionService(
+            provider: OllamaProvider(),
+            conversationStore: conversationStore
+        )
         let readbackPipeline = ReadbackPipeline(aiInteractionService: aiInteractionService)
         let clipboard = ClipboardService(appContextService: appContext)
         let claudeCode = ClaudeCodeService()
@@ -119,8 +126,11 @@ final class AppState {
         self.textDestinationService = TextDestinationService(appContextService: appContext)
         self.readbackPipeline = readbackPipeline
         self.aiInteractionService = aiInteractionService
+        self.conversationStore = conversationStore
         self.settings = loadedSettings
         self.aiProviderStatus = aiStore.loadStatus()
+        self.conversationHistoryEnabled = conversationStore.isHistoryEnabled()
+        self.conversationTurnCount = conversationStore.loadSession().turns.count
         self.nativeSpeechService = native
         self.edgeTTSService = edge
         
@@ -626,6 +636,16 @@ final class AppState {
         interactionCoordinator.discardActiveAIResponse()
     }
 
+    func updateConversationHistoryEnabled(_ enabled: Bool) {
+        conversationStore.setHistoryEnabled(enabled)
+        refreshConversationHistoryState()
+    }
+
+    func clearConversationHistory() {
+        conversationStore.clearHistory()
+        refreshConversationHistoryState()
+    }
+
     private var activeAIResponseText: String? {
         guard activeInteractionSession?.mode == .askAI,
               let text = activeInteractionSession?.generatedText?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -634,6 +654,11 @@ final class AppState {
         }
 
         return text
+    }
+
+    private func refreshConversationHistoryState() {
+        conversationHistoryEnabled = conversationStore.isHistoryEnabled()
+        conversationTurnCount = conversationStore.loadSession().turns.count
     }
     
     // MARK: - Settings
@@ -952,10 +977,12 @@ final class AppState {
                     do {
                         let response = try await self.aiInteractionService.completePrompt(request)
                         await MainActor.run {
+                            self.refreshConversationHistoryState()
                             completion(.success(response))
                         }
                     } catch {
                         await MainActor.run {
+                            self.refreshConversationHistoryState()
                             completion(.failure(error))
                         }
                     }

@@ -69,17 +69,24 @@ struct AIReadbackSummaryResponse: Codable, Equatable, Hashable {
 
 struct AIProviderBackedInteractionService: AIInteractionService {
     private let provider: AIProvider
+    private let conversationStore: ConversationStore?
 
-    init(provider: AIProvider) {
+    init(
+        provider: AIProvider,
+        conversationStore: ConversationStore? = nil
+    ) {
         self.provider = provider
+        self.conversationStore = conversationStore
     }
 
     func completePrompt(_ request: AIPromptRequest) async throws -> AIPromptResponse {
+        let useHistory = shouldUseConversationHistory(for: request)
+        let session = useHistory ? conversationStore?.loadSession() : nil
         let response = try await provider.complete(AIProviderRequest(
-            prompt: request.prompt,
+            prompt: promptText(for: request, history: session?.turns ?? []),
             selectedText: request.selectedText,
             appContext: request.appContext,
-            conversationID: request.conversationID,
+            conversationID: request.conversationID ?? session?.id.uuidString,
             metadata: request.metadata
         ))
         let text = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -87,9 +94,18 @@ struct AIProviderBackedInteractionService: AIInteractionService {
             throw AIProviderError.invalidResponse("AI provider returned an empty response.")
         }
 
+        if useHistory {
+            conversationStore?.appendTurn(
+                prompt: request.prompt,
+                response: text,
+                modelName: response.modelName,
+                to: session
+            )
+        }
+
         return AIPromptResponse(
             text: text,
-            conversationID: response.conversationID,
+            conversationID: response.conversationID ?? session?.id.uuidString,
             modelName: response.modelName
         )
     }
@@ -107,5 +123,31 @@ struct AIProviderBackedInteractionService: AIInteractionService {
         ))
 
         return AIReadbackSummaryResponse(summaryText: response.text)
+    }
+
+    private func shouldUseConversationHistory(for request: AIPromptRequest) -> Bool {
+        request.metadata["mode"] == InteractionMode.askAI.rawValue
+            && conversationStore?.isHistoryEnabled() == true
+    }
+
+    private func promptText(for request: AIPromptRequest, history: [ConversationTurn]) -> String {
+        guard !history.isEmpty else {
+            return request.prompt
+        }
+
+        let turns = history.map { turn in
+            """
+            User: \(turn.prompt)
+            Assistant: \(turn.response)
+            """
+        }.joined(separator: "\n\n")
+
+        return """
+        Conversation history:
+        \(turns)
+
+        Current prompt:
+        \(request.prompt)
+        """
     }
 }

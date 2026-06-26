@@ -226,6 +226,32 @@ struct MenuBarView: View {
                 Spacer()
             }
 
+            HStack(spacing: 8) {
+                Toggle("History", isOn: Binding(
+                    get: { appState.conversationHistoryEnabled },
+                    set: { appState.updateConversationHistoryEnabled($0) }
+                ))
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+
+                Text("\(appState.conversationTurnCount)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+                Button {
+                    appState.clearConversationHistory()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(appState.conversationTurnCount == 0)
+                .help("Clear conversation history")
+
+                Spacer()
+            }
+
             if appState.activeInteractionSession?.mode == .askAI,
                let prompt = nonEmpty(appState.activeInteractionSession?.transcript) {
                 Text(prompt)

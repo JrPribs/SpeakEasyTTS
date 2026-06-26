@@ -141,6 +141,12 @@ Choose between:
 
 Dictation defaults to verbatim mode. The app uses Apple's Speech framework result segments directly and disables automatic punctuation where supported, so it does not run dictated text through an LLM cleanup step.
 
+### Ask AI History
+
+Ask AI conversation history is disabled by default. When enabled from the Ask AI section, recent prompt/response turns are stored locally in plain text `UserDefaults` under `com.speakeasy.ai-conversation.session` and included as context for follow-up prompts.
+
+The store keeps the latest 20 turns. Use the trash button in the Ask AI section to clear stored turns without changing the history toggle. Verbatim dictation and readback summaries are not stored in Ask AI history.
+
 ## Project Structure
 
 ```

@@ -12,6 +12,7 @@ final class InteractionCoordinator {
         var playbackState: () -> PlaybackState
         var stopPlayback: () -> Void
         var trackTargetApp: () -> AppContext?
+        var destinationForTargetApp: (AppContext?) -> InteractionDestination
         var startDictation: () -> Void
         var stopDictation: () -> Void
         var insertText: (
@@ -64,6 +65,7 @@ final class InteractionCoordinator {
         hasInsertedCurrentDictation = false
         setDictationErrorMessage(nil)
         let targetApp = dependencies.trackTargetApp()
+        let destination = dependencies.destinationForTargetApp(targetApp)
 
         let date = now()
         emit(InteractionSession(
@@ -73,7 +75,7 @@ final class InteractionCoordinator {
             targetApp: targetApp,
             triggerState: dictationTriggerState,
             source: InteractionSource(kind: .microphone, appContext: targetApp),
-            destination: InteractionDestination(kind: .targetApp, appContext: targetApp, writeMode: .insert),
+            destination: destination,
             createdAt: date,
             updatedAt: date
         ))

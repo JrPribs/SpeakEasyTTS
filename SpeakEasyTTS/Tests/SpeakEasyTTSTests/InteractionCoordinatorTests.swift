@@ -31,7 +31,23 @@ struct InteractionCoordinatorTests {
         #expect(emittedSessions.first?.destination.kind == .targetApp)
         #expect(emittedSessions.first?.destination.appContext == harness.targetContext)
         #expect(emittedSessions.first?.destination.writeMode == .insert)
+        #expect(harness.requestedDestinationContexts == [harness.targetContext])
         #expect(coordinator.dictationTranscript == "")
+    }
+
+    @Test
+    func dictationSessionUsesInjectedDestinationPreference() {
+        let coordinator = makeCoordinator()
+        let harness = DictationHarness(preferredWriteMode: .replaceSelection)
+
+        coordinator.toggleDictation(dependencies: harness.dependencies())
+
+        #expect(coordinator.activeSession?.destination == InteractionDestination(
+            kind: .targetApp,
+            appContext: harness.targetContext,
+            writeMode: .replaceSelection
+        ))
+        #expect(harness.requestedDestinationContexts == [harness.targetContext])
     }
 
     @Test
@@ -411,16 +427,20 @@ private final class DictationHarness {
     var events: [String] = []
     var insertedTexts: [String] = []
     var insertedDestinations: [InteractionDestination] = []
+    var requestedDestinationContexts: [AppContext?] = []
+    private let preferredWriteMode: TextWriteMode
     private var insertResults: [Bool]
     private var pendingInsertCompletions: [(Result<InteractionDestination, InteractionCoordinator.TextInsertionFailure>) -> Void] = []
     private let completesInsertImmediately: Bool
 
     init(
         playbackState: PlaybackState = .idle,
+        preferredWriteMode: TextWriteMode = .insert,
         insertResults: [Bool] = [true],
         completesInsertImmediately: Bool = true
     ) {
         self.playbackState = playbackState
+        self.preferredWriteMode = preferredWriteMode
         self.insertResults = insertResults
         self.completesInsertImmediately = completesInsertImmediately
     }
@@ -437,6 +457,14 @@ private final class DictationHarness {
             trackTargetApp: { [self] in
                 events.append("trackTargetApp")
                 return targetContext
+            },
+            destinationForTargetApp: { [self] appContext in
+                requestedDestinationContexts.append(appContext)
+                return InteractionDestination(
+                    kind: .targetApp,
+                    appContext: appContext,
+                    writeMode: preferredWriteMode
+                )
             },
             startDictation: { [self] in
                 events.append("startDictation")
@@ -476,7 +504,7 @@ private final class DictationHarness {
             completion(.success(InteractionDestination(
                 kind: .targetApp,
                 appContext: targetContext,
-                writeMode: .insert
+                writeMode: preferredWriteMode
             )))
         } else {
             completion(.failure(InteractionCoordinator.TextInsertionFailure(

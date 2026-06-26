@@ -70,6 +70,7 @@ final class AppState {
     let settingsStore: SettingsStore
     let voiceManager: VoiceManager
     let appContextService: AppContextService
+    let appProfileService: AppProfileService
     let clipboardService: ClipboardService
     let claudeCodeService: ClaudeCodeService
     let textSourceService: TextSourceService
@@ -87,6 +88,7 @@ final class AppState {
         let store = SettingsStore()
         let loadedSettings = store.loadMigratedSettings()
         let appContext = AppContextService()
+        let appProfiles = AppProfileService()
         let clipboard = ClipboardService(appContextService: appContext)
         let claudeCode = ClaudeCodeService()
         
@@ -98,6 +100,7 @@ final class AppState {
         self.settingsStore = store
         self.voiceManager = VoiceManager()
         self.appContextService = appContext
+        self.appProfileService = appProfiles
         self.clipboardService = clipboard
         self.claudeCodeService = claudeCode
         self.textSourceService = TextSourceService(
@@ -299,6 +302,36 @@ final class AppState {
         }
     }
 
+    private func speakPreferredReadSource() {
+        let appContext = appContextService.targetAppContextForUserInteraction()
+        let requests = appProfileService.preferredSourceRequests(for: appContext)
+        speakFirstAvailableSource(from: requests)
+    }
+
+    private func speakFirstAvailableSource(
+        from requests: [TextSourceRequest],
+        lastError: TextSourceError? = nil
+    ) {
+        guard let request = requests.first else {
+            errorMessage = lastError?.localizedDescription ?? TextSourceError.selectedTextUnavailable.localizedDescription
+            return
+        }
+
+        textSourceService.resolve(request) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let source):
+                    self?.speakResolvedSource(source)
+                case .failure(let error):
+                    self?.speakFirstAvailableSource(
+                        from: Array(requests.dropFirst()),
+                        lastError: error
+                    )
+                }
+            }
+        }
+    }
+
     private func speakResolvedSource(_ source: TextSourceResult) {
         interactionCoordinator.beginReadback(source: source.source, text: source.text) { [weak self] text in
             self?.performSpeak(text)
@@ -349,7 +382,7 @@ final class AppState {
     
     /// Speak selected text from any application
     func speakSelectedText() {
-        speakSource(.selectedText)
+        speakPreferredReadSource()
     }
     
     /// Pause current speech
@@ -689,6 +722,10 @@ final class AppState {
             },
             trackTargetApp: { [weak self] in
                 self?.appContextService.resolveTargetApplicationForTextInsertion()?.context
+            },
+            destinationForTargetApp: { [weak self] appContext in
+                self?.appProfileService.preferredDestination(for: appContext)
+                    ?? InteractionDestination(kind: .targetApp, appContext: appContext, writeMode: .insert)
             },
             startDictation: { [weak self] in
                 self?.dictationService.start()

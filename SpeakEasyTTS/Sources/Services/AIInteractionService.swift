@@ -82,6 +82,7 @@ struct AIProviderBackedInteractionService: AIInteractionService {
     func completePrompt(_ request: AIPromptRequest) async throws -> AIPromptResponse {
         let useHistory = shouldUseConversationHistory(for: request)
         let session = useHistory ? conversationStore?.loadSession() : nil
+        AppLog.ai.info("AI prompt requested; mode=\(request.metadata["mode"] ?? "unknown"), history=\(useHistory)")
         let response = try await provider.complete(AIProviderRequest(
             prompt: promptText(for: request, history: session?.turns ?? []),
             selectedText: request.selectedText,
@@ -91,6 +92,7 @@ struct AIProviderBackedInteractionService: AIInteractionService {
         ))
         let text = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
+            AppLog.ai.error("AI provider returned empty response")
             throw AIProviderError.invalidResponse("AI provider returned an empty response.")
         }
 
@@ -103,6 +105,7 @@ struct AIProviderBackedInteractionService: AIInteractionService {
             )
         }
 
+        AppLog.ai.info("AI prompt completed; responseCharacters=\(text.count), model=\(response.modelName ?? "unknown")")
         return AIPromptResponse(
             text: text,
             conversationID: response.conversationID ?? session?.id.uuidString,
@@ -111,6 +114,7 @@ struct AIProviderBackedInteractionService: AIInteractionService {
     }
 
     func summarizeReadback(_ request: AIReadbackSummaryRequest) async throws -> AIReadbackSummaryResponse {
+        AppLog.ai.info("AI readback summary requested; deterministicCharacters=\(request.deterministicText.count)")
         let response = try await completePrompt(AIPromptRequest(
             prompt: "Summarize this text for spoken readback. Preserve tasks, blockers, commands, files, and decisions.",
             selectedText: request.deterministicText,

@@ -45,7 +45,7 @@ final class HotkeyManager {
         currentShortcuts = shortcuts
 
         guard AXIsProcessTrusted() else {
-            print("HotkeyManager: Accessibility permissions not granted")
+            AppLog.shortcuts.warning("Accessibility permissions not granted; global hotkeys skipped")
             return []
         }
 
@@ -82,7 +82,7 @@ final class HotkeyManager {
 
         removeAuxiliaryMonitor()
 
-        print("HotkeyManager: Global hotkeys unregistered")
+        AppLog.shortcuts.info("Global hotkeys unregistered")
     }
 
     // MARK: - Private Methods
@@ -170,7 +170,7 @@ final class HotkeyManager {
         }
         
         guard status == noErr else {
-            print("HotkeyManager: Failed to install event handler: \(status)")
+            AppLog.shortcuts.error("Failed to install event handler: \(status)")
             return false
         }
 
@@ -195,11 +195,11 @@ final class HotkeyManager {
         if status == noErr, let hotkeyRef {
             hotkeyRefs[hotkey.action.hotkeyID] = hotkeyRef
             registeredHotkeys[hotkey.action.hotkeyID] = hotkey
-            print("HotkeyManager: Global hotkey registered (\(hotkey.shortcut.displayName))")
+            AppLog.shortcuts.info("Global hotkey registered for \(hotkey.action.displayName)")
             return nil
         } else {
             let message = "Could not register \(hotkey.action.displayName) shortcut \(hotkey.shortcut.displayName)."
-            print("HotkeyManager: \(message) Status: \(status)")
+            AppLog.shortcuts.error("\(message) Status: \(status)")
             return HotkeyRegistrationFailure(message: message)
         }
     }
@@ -213,16 +213,16 @@ final class HotkeyManager {
 
             switch command {
             case .readSelection:
-                print("HotkeyManager: Read selection hotkey pressed")
+                AppLog.shortcuts.debug("Read selection hotkey pressed")
                 AppState.shared.speakSelectedText()
             case .toggleDictation:
-                print("HotkeyManager: Dictation hotkey pressed")
+                AppLog.shortcuts.debug("Dictation hotkey pressed")
                 AppState.shared.toggleDictation()
             case .startHoldDictation(let canLatch):
-                print("HotkeyManager: Hold dictation started")
+                AppLog.shortcuts.debug("Hold dictation started; canLatch=\(canLatch)")
                 AppState.shared.beginHoldDictation(canLatch: canLatch)
             case .finishHoldDictation:
-                print("HotkeyManager: Hold dictation released")
+                AppLog.shortcuts.debug("Hold dictation released")
                 AppState.shared.finishHoldDictation()
             }
         }

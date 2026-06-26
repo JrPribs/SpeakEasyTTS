@@ -52,11 +52,11 @@ final class SettingsStore {
             && settings.selectedVoiceId == legacyDefaultEdgeVoiceId
 
         if isOldDefaultEdgeSelection {
-            print("[TTS] Migrating default playback engine to native macOS speech")
+            AppLog.tts.info("Migrating default playback engine to native macOS speech")
             settings.ttsEngine = .native
             settings.selectedVoiceId = nil
         } else if settings.ttsEngine == .edgeTTS && !edgeTTSAvailable {
-            print("[TTS] Edge TTS unavailable at launch; using native macOS speech")
+            AppLog.tts.warning("Edge TTS unavailable at launch; using native macOS speech")
             settings.ttsEngine = .native
             settings.selectedVoiceId = nil
         }

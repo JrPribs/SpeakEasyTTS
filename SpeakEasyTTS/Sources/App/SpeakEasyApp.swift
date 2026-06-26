@@ -70,7 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         floatingOverlay = FloatingOverlayController.shared
         floatingOverlay?.show()
         
-        print("SpeakEasyTTS launched successfully")
+        AppLog.app.info("SpeakEasyTTS launched successfully")
     }
     
     func applicationWillTerminate(_ notification: Notification) {
@@ -86,11 +86,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let alreadyTrusted = AXIsProcessTrusted()
         
         if alreadyTrusted {
-            print("✅ Accessibility permissions already granted")
+            AppLog.permissions.info("Accessibility permissions already granted at launch")
             return
         }
         
-        print("⚠️ Accessibility NOT trusted - will prompt user")
+        AppLog.permissions.warning("Accessibility not trusted at launch; requesting prompt")
         
         // Show the system accessibility prompt
         // This opens System Preferences automatically

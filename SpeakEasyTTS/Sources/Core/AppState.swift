@@ -193,7 +193,7 @@ final class AppState {
         
         if granted != hasAccessibilityPermissions {
             hasAccessibilityPermissions = granted
-            print("🔐 Accessibility permissions: \(granted ? "GRANTED ✅" : "NOT GRANTED ❌")")
+            AppLog.permissions.info("Accessibility permission changed: \(granted ? "granted" : "not granted")")
             
             // Stop polling once permissions are granted
             if granted {
@@ -313,7 +313,7 @@ final class AppState {
     func switchEngine(_ engine: SpeechSettings.TTSEngine) {
         if engine == .edgeTTS && !EdgeTTSService.isAvailable() {
             errorMessage = EdgeTTSError.edgeTTSNotInstalled.localizedDescription
-            print("[TTS] Edge TTS unavailable; staying on \(settings.ttsEngine.rawValue)")
+            AppLog.tts.warning("Edge TTS unavailable; keeping current engine \(settings.ttsEngine.rawValue)")
             return
         }
 
@@ -435,13 +435,12 @@ final class AppState {
 
     private func performSpeak(_ text: String) {
         if settings.ttsEngine == .edgeTTS && !EdgeTTSService.isAvailable() {
-            print("[TTS] Edge TTS unavailable; falling back to native macOS speech")
+            AppLog.tts.warning("Edge TTS unavailable; falling back to native macOS speech")
             switchEngine(.native)
         }
 
         let engine = settings.ttsEngine == .edgeTTS ? "Edge TTS" : "Native"
-        let voiceName = selectedVoice?.name ?? "default"
-        print("[TTS] Speaking \(text.count) chars via \(engine), voice: \(voiceName)")
+        AppLog.readback.info("Speaking \(text.count) characters via \(engine)")
 
         currentText = text
         errorMessage = nil
@@ -459,7 +458,7 @@ final class AppState {
 
     /// Test audio pipeline using native TTS directly
     func testSpeech() {
-        print("[TTS] Running native speech test")
+        AppLog.tts.info("Running native speech test")
         let testService = NativeSpeechService()
         let request = SpeechRequest(
             text: "Speech test successful.",
@@ -823,7 +822,7 @@ final class AppState {
         if lastLoggedTrustedState != currentlyTrusted {
             lastLoggedTrustedState = currentlyTrusted
             if !currentlyTrusted {
-                print("AX not trusted - selection detection disabled")
+                AppLog.permissions.debug("Accessibility not trusted; selection detection disabled")
             }
         }
 

@@ -11,10 +11,12 @@ struct ReadbackPipeline {
     }
 
     func process(_ request: ReadbackRequest) -> ReadbackResult {
-        deterministicProcess(request)
+        AppLog.readback.info("Readback deterministic processing requested; characters=\(request.text.count), profile=\(request.profile.rawValue)")
+        return deterministicProcess(request)
     }
 
     func processWithOptionalSummary(_ request: ReadbackRequest) async -> ReadbackResult {
+        AppLog.readback.info("Readback processing requested; characters=\(request.text.count), profile=\(request.profile.rawValue), aiSummary=\(request.processingOptions.requestAISummary)")
         let fallback = deterministicProcess(request)
         guard request.processingOptions.requestAISummary,
               let aiInteractionService else {
@@ -28,11 +30,14 @@ struct ReadbackPipeline {
             ))
             let summary = response.summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !summary.isEmpty else {
+                AppLog.ai.warning("AI readback summary was empty; using deterministic fallback")
                 return fallback
             }
 
+            AppLog.readback.info("AI readback summary accepted; characters=\(summary.count)")
             return ReadbackResult(request: request, spokenText: summary)
         } catch {
+            AppLog.ai.warning("AI readback summary failed; using deterministic fallback")
             return fallback
         }
     }

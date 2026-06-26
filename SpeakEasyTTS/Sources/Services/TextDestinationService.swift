@@ -108,20 +108,24 @@ final class TextDestinationService {
 
     func write(_ request: TextDestinationRequest, completion: @escaping Completion) {
         guard !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            AppLog.insertion.warning("Text insertion rejected: empty text")
             completion(.failure(.emptyText))
             return
         }
 
         guard request.destination.kind == .targetApp else {
+            AppLog.insertion.warning("Text insertion rejected: unsupported destination \(request.destination.kind.rawValue)")
             completion(.failure(.unsupportedDestination(request.destination.kind)))
             return
         }
 
         guard let target = resolveTarget(request.destination.appContext) else {
+            AppLog.insertion.error("Text insertion failed: target unavailable")
             completion(.failure(.targetUnavailable))
             return
         }
 
+        AppLog.insertion.info("Text insertion started; characters=\(request.text.count)")
         let snapshot = makePasteboardSnapshot()
         writePasteboardString(request.text)
 
@@ -132,6 +136,7 @@ final class TextDestinationService {
 
             scheduleAfter(0.35) {
                 restorePasteboardSnapshot(snapshot)
+                AppLog.insertion.info("Text insertion completed")
                 completion(.success(TextDestinationResult(
                     destination: request.destination.resolved(with: target.context)
                 )))

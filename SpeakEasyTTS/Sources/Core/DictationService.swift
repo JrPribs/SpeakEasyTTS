@@ -52,6 +52,7 @@ final class DictationService {
     func start(localeIdentifier: String = Locale.current.identifier) {
         guard currentState != .recording else { return }
 
+        AppLog.dictation.info("Starting dictation authorization for locale \(localeIdentifier)")
         stop()
         updateState(.authorizing)
 
@@ -63,6 +64,7 @@ final class DictationService {
                 case .success:
                     self.startRecognition(localeIdentifier: localeIdentifier)
                 case .failure(let error):
+                    AppLog.dictation.error("Dictation permission request failed: \(String(describing: type(of: error)))")
                     self.updateState(.idle)
                     self.onError?(error)
                 }
@@ -71,6 +73,7 @@ final class DictationService {
     }
 
     func stop() {
+        AppLog.dictation.info("Stopping dictation")
         finishRecognition(cancelTask: true)
     }
 
@@ -94,6 +97,7 @@ final class DictationService {
     private func startRecognition(localeIdentifier: String) {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeIdentifier)),
               recognizer.isAvailable else {
+            AppLog.dictation.error("Speech recognizer unavailable")
             updateState(.idle)
             onError?(DictationError.recognizerUnavailable)
             return
@@ -112,6 +116,7 @@ final class DictationService {
 
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
+            AppLog.dictation.error("Invalid microphone input format")
             updateState(.idle)
             onError?(DictationError.invalidAudioInput)
             return
@@ -146,8 +151,10 @@ final class DictationService {
         do {
             audioEngine.prepare()
             try audioEngine.start()
+            AppLog.dictation.info("Dictation recording started")
             updateState(.recording)
         } catch {
+            AppLog.dictation.error("Audio engine failed to start")
             finishRecognition(cancelTask: true)
             onError?(DictationError.audioEngineFailed(error.localizedDescription))
         }

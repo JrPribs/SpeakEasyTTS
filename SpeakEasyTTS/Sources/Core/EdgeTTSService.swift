@@ -127,12 +127,12 @@ final class EdgeTTSService: SpeechService {
         for path in candidates {
             if FileManager.default.isExecutableFile(atPath: path) && hasEdgeTTS(pythonPath: path) {
                 cachedPython3Path = path
-                print("[EdgeTTS] Found python3 with edge-tts at: \(path)")
+                AppLog.tts.info("Found python3 with edge-tts")
                 return path
             }
         }
 
-        print("[EdgeTTS] No python3 with edge-tts found at known paths")
+        AppLog.tts.warning("No python3 with edge-tts found at known paths")
         return nil
     }
 
@@ -156,7 +156,7 @@ final class EdgeTTSService: SpeechService {
     // MARK: - Private Methods
 
     private func executeEdgeTTS(pythonPath: String, arguments: [String], outputFile: URL) {
-        print("[EdgeTTS] Executing: \(pythonPath) \(arguments.joined(separator: " "))")
+        AppLog.tts.info("Executing Edge TTS process with \(arguments.count) arguments")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: pythonPath)
@@ -172,7 +172,7 @@ final class EdgeTTSService: SpeechService {
             try process.run()
             process.waitUntilExit()
 
-            print("[EdgeTTS] Process exited with status: \(process.terminationStatus)")
+            AppLog.tts.info("Edge TTS process exited with status \(process.terminationStatus)")
 
             if process.terminationStatus == 0 {
                 DispatchQueue.main.async { [weak self] in

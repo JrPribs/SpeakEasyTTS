@@ -313,6 +313,16 @@ struct FloatingOverlayView: View {
             .buttonStyle(OverlayGlassPillButtonStyle(accent: statusColor))
             .disabled(!appState.hasAccessibilityPermissions)
             .help("Read currently selected text")
+
+            Button {
+                appState.summarizeSelectedTextForSpeech()
+            } label: {
+                Image(systemName: "text.bubble")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .purple))
+            .disabled(!appState.hasAccessibilityPermissions)
+            .help("Summarize selected response and read it")
             
             HStack(spacing: 6) {
                 Button {

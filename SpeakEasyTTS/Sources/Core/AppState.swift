@@ -75,6 +75,7 @@ final class AppState {
     let claudeCodeService: ClaudeCodeService
     let textSourceService: TextSourceService
     let textDestinationService: TextDestinationService
+    let readbackPipeline: ReadbackPipeline
     let interactionCoordinator = InteractionCoordinator()
     private let dictationService = DictationService()
     
@@ -108,6 +109,7 @@ final class AppState {
             claudeCodeService: claudeCode
         )
         self.textDestinationService = TextDestinationService(appContextService: appContext)
+        self.readbackPipeline = ReadbackPipeline()
         self.settings = loadedSettings
         self.nativeSpeechService = native
         self.edgeTTSService = edge
@@ -338,6 +340,19 @@ final class AppState {
         }
     }
 
+    private func speakSummarizedSource(_ source: TextSourceResult) {
+        let request = ReadbackRequest(
+            source: source.source,
+            text: source.text,
+            profile: .technicalResponse
+        )
+        let result = readbackPipeline.process(request)
+
+        interactionCoordinator.beginReadback(source: source.source, text: result.spokenText) { [weak self] text in
+            self?.performSpeak(text)
+        }
+    }
+
     private func performSpeak(_ text: String) {
         if settings.ttsEngine == .edgeTTS && !EdgeTTSService.isAvailable() {
             print("[TTS] Edge TTS unavailable; falling back to native macOS speech")
@@ -383,6 +398,20 @@ final class AppState {
     /// Speak selected text from any application
     func speakSelectedText() {
         speakPreferredReadSource()
+    }
+
+    /// Summarize selected response text before reading it aloud.
+    func summarizeSelectedTextForSpeech() {
+        textSourceService.resolve(.selectedText) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let source):
+                    self?.speakSummarizedSource(source)
+                case .failure(let error):
+                    self?.errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
     
     /// Pause current speech

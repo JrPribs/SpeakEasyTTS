@@ -214,6 +214,18 @@ struct MenuBarView: View {
                     .cornerRadius(4)
             }
 
+            HStack {
+                Button {
+                    appState.summarizeSelectedTextForSpeech()
+                } label: {
+                    Label("Summarize Selection", systemImage: "text.bubble")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
+                .help("Summarize selected response and read it")
+            }
+
             if let error = appState.errorMessage {
                 HStack {
                     Image(systemName: "exclamationmark.triangle.fill")

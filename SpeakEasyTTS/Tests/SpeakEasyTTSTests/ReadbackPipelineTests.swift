@@ -260,6 +260,43 @@ struct ReadbackPipelineTests {
     }
 
     @Test
+    func summaryProfilePreservesTasksBlockersCommandsFilesAndDecisions() {
+        let markdown = """
+        ## Decision
+        Use the deterministic fallback first.
+
+        ## Tasks
+        - [x] Add selected summary action
+        - [ ] Wire a hotkey later
+
+        ## Blockers
+        - No AI provider configured
+
+        ## Commands
+        ```bash
+        swift test
+        git status --short
+        ```
+
+        ## Files
+        - SpeakEasyTTS/Sources/Core/AppState.swift
+        - SpeakEasyTTS/Sources/Views/MenuBarView.swift
+        """
+
+        let spoken = summarize(markdown)
+
+        #expect(spoken.contains("Section: Decision."))
+        #expect(spoken.contains("Use the deterministic fallback first."))
+        #expect(spoken.contains("Completed: Add selected summary action."))
+        #expect(spoken.contains("To do: Wire a hotkey later."))
+        #expect(spoken.contains("Section: Blockers."))
+        #expect(spoken.contains("No AI provider configured."))
+        #expect(spoken.contains("Bash shell commands block, 2 lines. Commands: swift test, git status."))
+        #expect(spoken.contains("SpeakEasyTTS, Sources, Core, AppState dot swift."))
+        #expect(spoken.contains("SpeakEasyTTS, Sources, Views, MenuBarView dot swift."))
+    }
+
+    @Test
     func optionalAISummaryUsesProviderWhenRequested() async {
         let service = StubAIInteractionService(response: AIReadbackSummaryResponse(summaryText: "AI summary."))
         let request = aiSummaryRequest(text: "# Title\n\nBody")

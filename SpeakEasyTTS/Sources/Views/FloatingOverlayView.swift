@@ -4,6 +4,296 @@
 import SwiftUI
 import AppKit
 
+struct OverlayInteractionStatus: Equatable {
+    enum Kind: Equatable {
+        case noAccess
+        case aiResponseReady
+        case aiProcessing
+        case askAIRecording
+        case latchedDictation
+        case recording
+        case authorizing
+        case reading
+        case autoReading
+        case selectedText
+        case speaking
+        case paused
+        case ready
+    }
+
+    enum Tone: Equatable {
+        case orange
+        case pink
+        case red
+        case indigo
+        case purple
+        case blue
+        case mint
+        case green
+    }
+
+    var kind: Kind
+    var title: String
+    var badgeText: String?
+    var systemImageName: String
+    var helpText: String
+    var tone: Tone
+
+    var isActive: Bool {
+        kind != .ready
+    }
+
+    static func resolve(
+        hasAccessibilityPermissions: Bool,
+        hasSelection: Bool,
+        isAutoReading: Bool,
+        dictationState: DictationState,
+        triggerState: DictationTriggerState,
+        playbackState: PlaybackState,
+        activeSession: InteractionSession?
+    ) -> OverlayInteractionStatus {
+        if !hasAccessibilityPermissions {
+            return OverlayInteractionStatus(
+                kind: .noAccess,
+                title: "No Access",
+                badgeText: "LOCK",
+                systemImageName: "lock.fill",
+                helpText: "Open Accessibility Settings",
+                tone: .orange
+            )
+        }
+
+        if let activeSession,
+           activeSession.state != .idle,
+           !activeSession.state.isTerminal {
+            if let status = resolveActiveSession(activeSession, dictationState: dictationState) {
+                return status
+            }
+        }
+
+        if isLatched(triggerState) {
+            return OverlayInteractionStatus(
+                kind: .latchedDictation,
+                title: "Latched",
+                badgeText: "PIN",
+                systemImageName: "pin.fill",
+                helpText: "Stop latched dictation and insert text",
+                tone: .pink
+            )
+        }
+
+        switch dictationState {
+        case .authorizing:
+            return OverlayInteractionStatus(
+                kind: .authorizing,
+                title: "Authorizing",
+                badgeText: "AUTH",
+                systemImageName: "lock.open",
+                helpText: "Cancel dictation",
+                tone: .indigo
+            )
+        case .recording:
+            return OverlayInteractionStatus(
+                kind: .recording,
+                title: "Recording",
+                badgeText: "REC",
+                systemImageName: "mic.fill",
+                helpText: helpTextForRecording(triggerState),
+                tone: .red
+            )
+        case .idle:
+            break
+        }
+
+        if isAutoReading {
+            return OverlayInteractionStatus(
+                kind: .autoReading,
+                title: "Auto Read",
+                badgeText: "READ",
+                systemImageName: "waveform",
+                helpText: "Reading selected text",
+                tone: .purple
+            )
+        }
+
+        if hasSelection && playbackState == .idle {
+            return OverlayInteractionStatus(
+                kind: .selectedText,
+                title: "Selection",
+                badgeText: nil,
+                systemImageName: "text.cursor",
+                helpText: "Read selected text",
+                tone: .blue
+            )
+        }
+
+        switch playbackState {
+        case .playing:
+            return OverlayInteractionStatus(
+                kind: .speaking,
+                title: "Speaking",
+                badgeText: "READ",
+                systemImageName: "speaker.wave.3.fill",
+                helpText: "Pause speech",
+                tone: .mint
+            )
+        case .paused:
+            return OverlayInteractionStatus(
+                kind: .paused,
+                title: "Paused",
+                badgeText: "PAUSE",
+                systemImageName: "pause.fill",
+                helpText: "Resume speech",
+                tone: .orange
+            )
+        case .idle:
+            return OverlayInteractionStatus(
+                kind: .ready,
+                title: "Ready",
+                badgeText: nil,
+                systemImageName: "speaker.wave.2.fill",
+                helpText: "Expand overlay controls",
+                tone: .blue
+            )
+        }
+    }
+
+    private static func resolveActiveSession(
+        _ session: InteractionSession,
+        dictationState: DictationState
+    ) -> OverlayInteractionStatus? {
+        switch session.mode {
+        case .askAI:
+            return resolveAskAI(session, dictationState: dictationState)
+        case .dictateVerbatim:
+            return nil
+        case .readback:
+            if session.state == .reading {
+                return OverlayInteractionStatus(
+                    kind: .reading,
+                    title: "Reading",
+                    badgeText: "READ",
+                    systemImageName: "speaker.wave.3.fill",
+                    helpText: "Stop reading",
+                    tone: .mint
+                )
+            }
+            return nil
+        case .transformText:
+            if session.state == .processing {
+                return OverlayInteractionStatus(
+                    kind: .aiProcessing,
+                    title: "Processing",
+                    badgeText: "AI",
+                    systemImageName: "sparkles",
+                    helpText: "Cancel active interaction",
+                    tone: .purple
+                )
+            }
+            return nil
+        }
+    }
+
+    private static func resolveAskAI(
+        _ session: InteractionSession,
+        dictationState: DictationState
+    ) -> OverlayInteractionStatus {
+        if session.state == .awaitingUserReview,
+           nonEmpty(session.generatedText) != nil {
+            return OverlayInteractionStatus(
+                kind: .aiResponseReady,
+                title: "Response Ready",
+                badgeText: "READY",
+                systemImageName: "text.bubble.fill",
+                helpText: "Review AI response",
+                tone: .green
+            )
+        }
+
+        switch session.state {
+        case .preparing:
+            return OverlayInteractionStatus(
+                kind: .askAIRecording,
+                title: "Ask AI",
+                badgeText: "ASK",
+                systemImageName: "mic.badge.plus",
+                helpText: "Cancel prompt",
+                tone: .indigo
+            )
+        case .recording:
+            return OverlayInteractionStatus(
+                kind: .askAIRecording,
+                title: "Prompting",
+                badgeText: "ASK",
+                systemImageName: "mic.badge.plus",
+                helpText: dictationState == .recording ? "Send prompt" : "Cancel prompt",
+                tone: .red
+            )
+        case .transcribing, .processing:
+            return OverlayInteractionStatus(
+                kind: .aiProcessing,
+                title: "Processing",
+                badgeText: "AI",
+                systemImageName: "sparkles",
+                helpText: "Cancel AI response",
+                tone: .purple
+            )
+        case .reading:
+            return OverlayInteractionStatus(
+                kind: .reading,
+                title: "Reading",
+                badgeText: "READ",
+                systemImageName: "speaker.wave.3.fill",
+                helpText: "Stop reading",
+                tone: .mint
+            )
+        case .inserting:
+            return OverlayInteractionStatus(
+                kind: .aiProcessing,
+                title: "Inserting",
+                badgeText: "SEND",
+                systemImageName: "arrow.down.doc.fill",
+                helpText: "Cancel insertion",
+                tone: .purple
+            )
+        case .idle, .awaitingUserReview, .completed, .failed, .cancelled:
+            return OverlayInteractionStatus(
+                kind: .aiProcessing,
+                title: "Ask AI",
+                badgeText: "AI",
+                systemImageName: "sparkles",
+                helpText: "Cancel active interaction",
+                tone: .purple
+            )
+        }
+    }
+
+    private static func isLatched(_ triggerState: DictationTriggerState) -> Bool {
+        switch triggerState {
+        case .holding(_, let isLatched):
+            return isLatched
+        case .latched:
+            return true
+        case .inactive:
+            return false
+        }
+    }
+
+    private static func helpTextForRecording(_ triggerState: DictationTriggerState) -> String {
+        if case .holding(let canLatch, _) = triggerState,
+           canLatch {
+            return "Release to finish. Press Space to latch."
+        }
+
+        return "Stop dictation and insert text"
+    }
+
+    private static func nonEmpty(_ text: String?) -> String? {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
 /// Floating pill-shaped overlay that stays on top of all windows
 struct FloatingOverlayView: View {
     @Environment(AppState.self) private var appState
@@ -35,9 +325,21 @@ struct FloatingOverlayView: View {
     private var controlsVisible: Bool {
         shouldExpand && !isDragging
     }
+
+    private var overlayStatus: OverlayInteractionStatus {
+        OverlayInteractionStatus.resolve(
+            hasAccessibilityPermissions: appState.hasAccessibilityPermissions,
+            hasSelection: hasSelection,
+            isAutoReading: isAutoReading,
+            dictationState: appState.dictationState,
+            triggerState: appState.dictationTriggerState,
+            playbackState: appState.playbackState,
+            activeSession: appState.activeInteractionSession
+        )
+    }
     
     private var isActiveState: Bool {
-        hasSelection || isAutoReading || appState.dictationState != .idle || appState.playbackState != .idle
+        overlayStatus.isActive
     }
     
     var body: some View {
@@ -66,6 +368,7 @@ struct FloatingOverlayView: View {
         .animation(.spring(response: 0.24, dampingFraction: 0.84), value: shouldExpand)
         .animation(.easeInOut(duration: 0.16), value: isHovering)
         .animation(.easeInOut(duration: 0.18), value: appState.playbackState)
+        .animation(.easeInOut(duration: 0.18), value: overlayStatus.kind)
         .animation(.easeInOut(duration: 0.18), value: hasSelection)
         .onAppear {
             floatingOverlay.updateSize(width: shouldExpand ? expandedWidth : collapsedWidth)
@@ -154,6 +457,21 @@ struct FloatingOverlayView: View {
     // MARK: - Actions
     
     private func handlePrimaryTap() {
+        if appState.activeInteractionSession?.mode == .askAI {
+            switch appState.activeInteractionSession?.state {
+            case .recording:
+                appState.toggleAskAI()
+                return
+            case .preparing, .processing, .transcribing, .awaitingUserReview, .reading, .inserting:
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+                    isPinnedExpanded = true
+                }
+                return
+            case .idle, .completed, .failed, .cancelled, .none:
+                break
+            }
+        }
+
         if appState.dictationState == .recording {
             appState.stopDictationAndInsert()
             return
@@ -272,6 +590,25 @@ struct FloatingOverlayView: View {
                 Image(systemName: statusIcon)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
+
+                if let badgeText = overlayStatus.badgeText {
+                    Text(badgeText)
+                        .font(.system(size: 6.5, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule()
+                                .fill(Color.black.opacity(0.54))
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(Color.white.opacity(0.35), lineWidth: 0.5)
+                                )
+                        )
+                        .offset(x: 13, y: -15)
+                }
                 
                 Circle()
                     .stroke(statusColor.opacity(0.35), lineWidth: 2)
@@ -285,6 +622,21 @@ struct FloatingOverlayView: View {
     }
     
     private var expandedControls: some View {
+        HStack(spacing: 8) {
+            if let session = appState.activeInteractionSession,
+               session.state != .idle,
+               !session.state.isTerminal {
+                activeSessionControls(for: session)
+            } else {
+                defaultControls
+            }
+
+            pinToggleButton
+        }
+        .foregroundStyle(.white.opacity(0.96))
+    }
+
+    private var defaultControls: some View {
         HStack(spacing: 8) {
             Button {
                 appState.toggleDictation()
@@ -369,101 +721,199 @@ struct FloatingOverlayView: View {
             }
             .buttonStyle(OverlayGlassIconButtonStyle(accent: .purple))
             .help("Read Claude Code plan")
+        }
+    }
+
+    @ViewBuilder
+    private func activeSessionControls(for session: InteractionSession) -> some View {
+        switch session.mode {
+        case .dictateVerbatim:
+            dictationSessionControls
+        case .askAI:
+            askAIControls(for: session)
+        case .readback:
+            readbackSessionControls
+        case .transformText:
+            cancelInteractionButton(help: "Cancel active interaction")
+        }
+    }
+
+    private var dictationSessionControls: some View {
+        HStack(spacing: 8) {
+            if appState.dictationState == .recording {
+                Button {
+                    appState.stopDictationAndInsert()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(OverlayGlassIconButtonStyle(accent: .red))
+                .help("Stop dictation and insert")
+            }
+
+            if appState.canCancelActiveInteraction {
+                cancelInteractionButton(help: "Cancel dictation")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func askAIControls(for session: InteractionSession) -> some View {
+        switch session.state {
+        case .recording:
+            Button {
+                appState.toggleAskAI()
+            } label: {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .green))
+            .help("Send prompt")
+
+            if appState.canCancelActiveInteraction {
+                cancelInteractionButton(help: "Cancel prompt")
+            }
+        case .awaitingUserReview:
+            aiResponseControls
+        case .reading:
+            cancelInteractionButton(help: "Stop reading")
 
             Button {
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
-                    isPinnedExpanded.toggle()
-                }
+                appState.copyCurrentAIResponse()
             } label: {
-                Image(systemName: isPinnedExpanded ? "pin.fill" : "pin")
-                    .font(.system(size: 11, weight: .medium))
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 12, weight: .medium))
             }
-            .buttonStyle(OverlayGlassIconButtonStyle(accent: .gray))
-            .help(isPinnedExpanded ? "Unpin expanded view" : "Pin expanded view")
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .blue))
+            .help("Copy AI response")
+        case .preparing, .transcribing, .processing, .inserting:
+            if appState.canCancelActiveInteraction {
+                cancelInteractionButton(help: overlayStatus.helpText)
+            }
+        case .idle, .completed, .failed, .cancelled:
+            EmptyView()
         }
-        .foregroundStyle(.white.opacity(0.96))
     }
-    
+
+    private var aiResponseControls: some View {
+        HStack(spacing: 8) {
+            Button {
+                appState.readCurrentAIResponse()
+            } label: {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .mint))
+            .help("Read AI response")
+
+            Button {
+                appState.copyCurrentAIResponse()
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .blue))
+            .help("Copy AI response")
+
+            Button {
+                appState.insertCurrentAIResponse()
+            } label: {
+                Image(systemName: "arrow.down.doc")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .green))
+            .help("Insert AI response")
+
+            Button {
+                appState.discardCurrentAIResponse()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .orange))
+            .help("Discard AI response")
+        }
+    }
+
+    private var readbackSessionControls: some View {
+        HStack(spacing: 8) {
+            Button {
+                appState.togglePlayPause()
+            } label: {
+                Image(systemName: appState.playbackState == .playing ? "pause.fill" : "play.fill")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .green))
+            .help(appState.playbackState == .playing ? "Pause speech" : "Resume speech")
+
+            Button {
+                appState.cancelActiveInteraction()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(OverlayGlassIconButtonStyle(accent: .orange))
+            .help("Stop reading")
+        }
+    }
+
+    private func cancelInteractionButton(help: String) -> some View {
+        Button {
+            appState.cancelActiveInteraction()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .buttonStyle(OverlayGlassIconButtonStyle(accent: .orange))
+        .help(help)
+    }
+
+    private var pinToggleButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+                isPinnedExpanded.toggle()
+            }
+        } label: {
+            Image(systemName: isPinnedExpanded ? "pin.fill" : "pin")
+                .font(.system(size: 11, weight: .medium))
+        }
+        .buttonStyle(OverlayGlassIconButtonStyle(accent: .gray))
+        .help(isPinnedExpanded ? "Unpin expanded view" : "Pin expanded view")
+    }
+
     private var statusColor: Color {
-        if !appState.hasAccessibilityPermissions {
-            return Color(nsColor: .systemOrange)
-        }
-        if appState.isDictationLatched {
-            return Color(nsColor: .systemPink)
-        }
-        if appState.dictationState == .recording {
-            return Color(nsColor: .systemRed)
-        }
-        if appState.dictationState == .authorizing {
-            return Color(nsColor: .systemIndigo)
-        }
-        if isAutoReading {
-            return Color(nsColor: .systemPurple)
-        }
-        if hasSelection && appState.playbackState == .idle {
-            return Color(nsColor: .systemBlue)
-        }
-        
-        switch appState.playbackState {
-        case .playing:
-            return Color(nsColor: .systemMint)
-        case .paused:
-            return Color(nsColor: .systemOrange)
-        case .idle:
-            return Color(nsColor: .systemBlue)
-        }
+        overlayStatus.tone.color
     }
-    
+
     private var statusIcon: String {
-        if !appState.hasAccessibilityPermissions {
-            return "lock.fill"
-        }
-        if appState.isDictationLatched {
-            return "pin.fill"
-        }
-        if appState.dictationState == .recording {
-            return "mic.fill"
-        }
-        if appState.dictationState == .authorizing {
-            return "lock.open"
-        }
-        if isAutoReading {
-            return "waveform"
-        }
-        if hasSelection && appState.playbackState == .idle {
-            return "text.cursor"
-        }
-        
-        switch appState.playbackState {
-        case .playing:
-            return "speaker.wave.3.fill"
-        case .paused:
-            return "pause.fill"
-        case .idle:
-            return "speaker.wave.2.fill"
-        }
+        overlayStatus.systemImageName
     }
-    
+
     private var primaryButtonHelpText: String {
-        if !appState.hasAccessibilityPermissions {
-            return "Open Accessibility Settings"
+        overlayStatus.helpText
+    }
+}
+
+private extension OverlayInteractionStatus.Tone {
+    var color: Color {
+        switch self {
+        case .orange:
+            return Color(nsColor: .systemOrange)
+        case .pink:
+            return Color(nsColor: .systemPink)
+        case .red:
+            return Color(nsColor: .systemRed)
+        case .indigo:
+            return Color(nsColor: .systemIndigo)
+        case .purple:
+            return Color(nsColor: .systemPurple)
+        case .blue:
+            return Color(nsColor: .systemBlue)
+        case .mint:
+            return Color(nsColor: .systemMint)
+        case .green:
+            return Color(nsColor: .systemGreen)
         }
-        if appState.isDictationLatched {
-            return "Stop latched dictation and insert text"
-        }
-        if appState.canLatchDictationWithSpace {
-            return "Release to finish. Press Space to latch."
-        }
-        if appState.dictationState == .recording {
-            return "Stop dictation and insert text"
-        }
-        if appState.dictationState == .authorizing {
-            return "Cancel dictation"
-        }
-        if hasSelection {
-            return "Read selected text"
-        }
-        return "Expand overlay controls"
     }
 }
 

@@ -71,7 +71,8 @@ final class AppState {
     let voiceManager: VoiceManager
     let appContextService: AppContextService
     let clipboardService: ClipboardService
-    let claudeCodeService = ClaudeCodeService()
+    let claudeCodeService: ClaudeCodeService
+    let textSourceService: TextSourceService
     let interactionCoordinator = InteractionCoordinator()
     private let dictationService = DictationService()
     
@@ -85,6 +86,8 @@ final class AppState {
         let store = SettingsStore()
         let loadedSettings = store.loadMigratedSettings()
         let appContext = AppContextService()
+        let clipboard = ClipboardService(appContextService: appContext)
+        let claudeCode = ClaudeCodeService()
         
         // Initialize both speech services
         let native = NativeSpeechService()
@@ -94,7 +97,12 @@ final class AppState {
         self.settingsStore = store
         self.voiceManager = VoiceManager()
         self.appContextService = appContext
-        self.clipboardService = ClipboardService(appContextService: appContext)
+        self.clipboardService = clipboard
+        self.claudeCodeService = claudeCode
+        self.textSourceService = TextSourceService(
+            clipboardService: clipboard,
+            claudeCodeService: claudeCode
+        )
         self.settings = loadedSettings
         self.nativeSpeechService = native
         self.edgeTTSService = edge
@@ -273,16 +281,24 @@ final class AppState {
     
     /// Start speaking the given text
     func speak(_ text: String) {
-        speak(text, source: InteractionSource(kind: .manualText, text: text))
+        speakSource(.manualText(text))
     }
 
-    private func speak(_ text: String, source: InteractionSource) {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "No text to speak"
-            return
+    private func speakSource(_ request: TextSourceRequest) {
+        textSourceService.resolve(request) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let source):
+                    self?.speakResolvedSource(source)
+                case .failure(let error):
+                    self?.errorMessage = error.localizedDescription
+                }
+            }
         }
+    }
 
-        interactionCoordinator.beginReadback(source: source, text: text) { [weak self] text in
+    private func speakResolvedSource(_ source: TextSourceResult) {
+        interactionCoordinator.beginReadback(source: source.source, text: source.text) { [weak self] text in
             self?.performSpeak(text)
         }
     }
@@ -326,23 +342,12 @@ final class AppState {
     
     /// Speak text from clipboard
     func speakFromClipboard() {
-        if let text = clipboardService.getText() {
-            speak(text, source: InteractionSource(kind: .clipboard, text: text))
-        } else {
-            errorMessage = "Clipboard is empty or contains non-text content"
-        }
+        speakSource(.clipboard)
     }
     
     /// Speak selected text from any application
     func speakSelectedText() {
-        // Get selected text using the improved method
-        clipboardService.getSelectedText { [weak self] text in
-            if let text = text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                self?.speak(text, source: InteractionSource(kind: .selectedText, text: text))
-            } else {
-                self?.errorMessage = "No text selected. Please select some text first."
-            }
-        }
+        speakSource(.selectedText)
     }
     
     /// Pause current speech
@@ -497,16 +502,7 @@ final class AppState {
 
     /// Auto-find and read the most recent Claude Code plan
     func speakRecentClaudePlan() {
-        guard let url = claudeCodeService.findRecentPlan() else {
-            errorMessage = "No Claude Code plan files found in ~/.claude/projects/"
-            return
-        }
-        guard let content = claudeCodeService.readPlan(at: url) else {
-            errorMessage = "Could not read plan file"
-            return
-        }
-        let processed = claudeCodeService.preprocessForSpeech(content)
-        speak(processed, source: InteractionSource(kind: .file, text: processed, url: url))
+        speakSource(.recentClaudePlan)
     }
 
     /// Show file picker and read the selected plan file
@@ -521,10 +517,7 @@ final class AppState {
 
         NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK, let url = panel.url {
-            if let content = claudeCodeService.readPlan(at: url) {
-                let processed = claudeCodeService.preprocessForSpeech(content)
-                speak(processed, source: InteractionSource(kind: .file, text: processed, url: url))
-            }
+            speakSource(.claudePlanFile(url))
         }
     }
 

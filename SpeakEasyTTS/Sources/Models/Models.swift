@@ -29,7 +29,7 @@ enum DictationState: Equatable {
     }
 }
 
-enum DictationTriggerState: Equatable {
+enum DictationTriggerState: Codable, Equatable, Hashable {
     case inactive
     case holding(canLatch: Bool, isLatched: Bool)
     case latched

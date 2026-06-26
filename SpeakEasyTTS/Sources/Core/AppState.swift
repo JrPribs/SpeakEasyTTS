@@ -68,6 +68,7 @@ final class AppState {
     private var nativeSpeechService: NativeSpeechService
     private var edgeTTSService: EdgeTTSService
     let settingsStore: SettingsStore
+    let aiProviderStore: AIProviderStore
     let voiceManager: VoiceManager
     let appContextService: AppContextService
     let appProfileService: AppProfileService
@@ -81,12 +82,14 @@ final class AppState {
     
     // MARK: - Private
     private var cancellables = Set<AnyCancellable>()
+    var aiProviderStatus: AIProviderStatus
     
     // MARK: - Initialization
     
     private init() {
         // Initialize settings first to know which engine to use
         let store = SettingsStore()
+        let aiStore = AIProviderStore()
         let loadedSettings = store.loadMigratedSettings()
         let appContext = AppContextService()
         let appProfiles = AppProfileService()
@@ -100,6 +103,7 @@ final class AppState {
         
         // Store services
         self.settingsStore = store
+        self.aiProviderStore = aiStore
         self.voiceManager = VoiceManager()
         self.appContextService = appContext
         self.appProfileService = appProfiles
@@ -113,6 +117,7 @@ final class AppState {
         self.textDestinationService = TextDestinationService(appContextService: appContext)
         self.readbackPipeline = readbackPipeline
         self.settings = loadedSettings
+        self.aiProviderStatus = aiStore.loadStatus()
         self.nativeSpeechService = native
         self.edgeTTSService = edge
         
@@ -223,6 +228,15 @@ final class AppState {
         var shortcuts = settings.shortcuts
         shortcuts.dictation.triggerMode = mode
         updateShortcutPreferences(shortcuts)
+    }
+
+    func refreshAIProviderStatus() {
+        aiProviderStatus = aiProviderStore.loadStatus()
+    }
+
+    func resetAIProviderStatus() {
+        aiProviderStore.reset()
+        refreshAIProviderStatus()
     }
     
     // MARK: - Voice Management

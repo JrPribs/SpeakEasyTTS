@@ -22,7 +22,7 @@ struct FloatingOverlayView: View {
     private var collapsedWidth: CGFloat {
         appState.hasAccessibilityPermissions ? 50 : 100
     }
-    private let expandedWidth: CGFloat = 330
+    private let expandedWidth: CGFloat = 362
     
     private var hasSelection: Bool {
         appState.hasSelectedText
@@ -296,6 +296,17 @@ struct FloatingOverlayView: View {
             .disabled(!appState.hasAccessibilityPermissions)
             .help(appState.dictationState == .idle ? "Start dictation" : "Stop dictation and insert")
 
+            if appState.canCancelActiveInteraction {
+                Button {
+                    appState.cancelActiveInteraction()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(OverlayGlassIconButtonStyle(accent: .orange))
+                .help("Cancel active interaction")
+            }
+
             Button("Read") {
                 appState.speakSelectedText()
             }
@@ -314,7 +325,11 @@ struct FloatingOverlayView: View {
                 .disabled(appState.playbackState == .idle && appState.currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 
                 Button {
-                    appState.stop()
+                    if appState.canCancelActiveInteraction {
+                        appState.cancelActiveInteraction()
+                    } else {
+                        appState.stop()
+                    }
                 } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 11, weight: .semibold))

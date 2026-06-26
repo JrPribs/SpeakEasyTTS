@@ -84,7 +84,7 @@ final class InteractionCoordinator {
         guard activeSession?.mode == .dictateVerbatim,
               activeSession?.state.isTerminal == false else {
             dependencies.stopDictation()
-            insertDictatedText(textToInsert, dependencies: dependencies)
+            setDictationState(.idle)
             return
         }
 
@@ -95,6 +95,7 @@ final class InteractionCoordinator {
         }
 
         dependencies.stopDictation()
+        setDictationState(.idle)
         insertDictatedText(textToInsert, dependencies: dependencies)
     }
 
@@ -151,6 +152,7 @@ final class InteractionCoordinator {
                 dependencies.stopDictation()
             }
         )
+        setDictationState(.idle)
         setDictationTranscript("")
         hasInsertedCurrentDictation = false
     }
@@ -206,6 +208,8 @@ final class InteractionCoordinator {
             reason: .serviceError,
             message: message
         )
+        setDictationTranscript("")
+        hasInsertedCurrentDictation = false
     }
 
     func beginReadback(
@@ -333,6 +337,10 @@ final class InteractionCoordinator {
         hasInsertedCurrentDictation = true
         dependencies.insertText(normalized) { [weak self] didInsert in
             guard let self else { return }
+            guard self.activeSession?.mode == .dictateVerbatim,
+                  self.activeSession?.state.isTerminal == false else {
+                return
+            }
 
             if didInsert {
                 self.setDictationTranscript(normalized)

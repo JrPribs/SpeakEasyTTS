@@ -130,6 +130,82 @@ struct InteractionCoordinatorTests {
     }
 
     @Test
+    func stopAfterTerminalDictationSessionDoesNotInsertStaleTranscript() {
+        let coordinator = makeCoordinator()
+        let harness = DictationHarness()
+
+        coordinator.toggleDictation(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleDictationTranscript(
+            "stale text",
+            isFinal: false,
+            dependencies: harness.dependencies()
+        )
+        coordinator.cancelDictation(dependencies: harness.dependencies())
+        coordinator.stopDictationAndInsert(dependencies: harness.dependencies())
+
+        #expect(harness.insertedTexts.isEmpty)
+        #expect(coordinator.activeSession?.state == .cancelled)
+        #expect(coordinator.dictationState == .idle)
+    }
+
+    @Test
+    func delayedInsertionCompletionAfterCancellationDoesNotCompleteSession() {
+        let coordinator = makeCoordinator()
+        let harness = DictationHarness(completesInsertImmediately: false)
+
+        coordinator.toggleDictation(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleDictationTranscript(
+            "pending insert",
+            isFinal: false,
+            dependencies: harness.dependencies()
+        )
+        coordinator.stopDictationAndInsert(dependencies: harness.dependencies())
+
+        #expect(coordinator.activeSession?.state == .inserting)
+
+        coordinator.cancelDictation(dependencies: harness.dependencies())
+        harness.completeNextInsert(didInsert: true)
+
+        #expect(harness.insertedTexts == ["pending insert"])
+        #expect(coordinator.activeSession?.state == .cancelled)
+        #expect(coordinator.dictationState == .idle)
+    }
+
+    @Test
+    func dictationErrorClearsRecoverableStateAndAllowsRestart() {
+        let coordinator = makeCoordinator()
+        let harness = DictationHarness()
+        var errorMessages: [String?] = []
+        coordinator.onDictationErrorMessageChange = { message in
+            errorMessages.append(message)
+        }
+
+        coordinator.beginHoldDictation(canLatch: true, dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleDictationTranscript(
+            "do not keep",
+            isFinal: false,
+            dependencies: harness.dependencies()
+        )
+        coordinator.handleDictationError("Microphone failed.")
+
+        #expect(coordinator.activeSession?.state == .failed)
+        #expect(coordinator.activeSession?.failure?.reason == .serviceError)
+        #expect(coordinator.dictationState == .idle)
+        #expect(coordinator.dictationTriggerState == .inactive)
+        #expect(coordinator.dictationTranscript == "")
+        #expect(errorMessages.contains { $0 == "Microphone failed." })
+
+        coordinator.toggleDictation(dependencies: harness.dependencies())
+
+        #expect(coordinator.activeSession?.state == .preparing)
+        #expect(coordinator.activeSession?.failure == nil)
+        #expect(errorMessages.last == nil)
+    }
+
+    @Test
     func holdLatchPromotesOnReleaseAndStopsOnNextHoldPress() {
         let coordinator = makeCoordinator()
         let harness = DictationHarness()
@@ -324,13 +400,17 @@ private final class DictationHarness {
     var events: [String] = []
     var insertedTexts: [String] = []
     private var insertResults: [Bool]
+    private var pendingInsertCompletions: [(Bool) -> Void] = []
+    private let completesInsertImmediately: Bool
 
     init(
         playbackState: PlaybackState = .idle,
-        insertResults: [Bool] = [true]
+        insertResults: [Bool] = [true],
+        completesInsertImmediately: Bool = true
     ) {
         self.playbackState = playbackState
         self.insertResults = insertResults
+        self.completesInsertImmediately = completesInsertImmediately
     }
 
     func dependencies() -> InteractionCoordinator.DictationDependencies {
@@ -354,9 +434,20 @@ private final class DictationHarness {
             insertText: { [self] text, completion in
                 events.append("insert:\(text)")
                 insertedTexts.append(text)
-                completion(nextInsertResult())
+                if completesInsertImmediately {
+                    completion(nextInsertResult())
+                } else {
+                    pendingInsertCompletions.append(completion)
+                }
             }
         )
+    }
+
+    func completeNextInsert(didInsert: Bool) {
+        guard !pendingInsertCompletions.isEmpty else { return }
+
+        let completion = pendingInsertCompletions.removeFirst()
+        completion(didInsert)
     }
 
     private func nextInsertResult() -> Bool {

@@ -98,6 +98,11 @@ struct MenuBarView: View {
         appState.dictationState == .idle ? appState.playbackState.displayName : appState.dictationState.displayName
     }
 
+    private var canCancelDictationSession: Bool {
+        appState.activeInteractionSession?.mode == .dictateVerbatim
+            && appState.canCancelActiveInteraction
+    }
+
     // MARK: - Dictation Section
 
     private var dictationSection: some View {
@@ -130,9 +135,9 @@ struct MenuBarView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
 
-                if appState.dictationState != .idle {
+                if canCancelDictationSession {
                     Button("Cancel") {
-                        appState.cancelDictation()
+                        appState.cancelActiveInteraction()
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -267,7 +272,11 @@ struct MenuBarView: View {
                 Spacer()
                 
                 Button {
-                    appState.stop()
+                    if appState.canCancelActiveInteraction {
+                        appState.cancelActiveInteraction()
+                    } else {
+                        appState.stop()
+                    }
                 } label: {
                     Image(systemName: "stop.fill")
                         .font(.title3)

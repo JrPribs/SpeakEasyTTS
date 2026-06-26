@@ -51,6 +51,10 @@ final class AppState {
         }
         return false
     }
+
+    var canCancelActiveInteraction: Bool {
+        activeInteractionSession?.canCancel == true
+    }
     
     // MARK: - Accessibility Permissions
     var hasAccessibilityPermissions: Bool = false
@@ -365,6 +369,25 @@ final class AppState {
         playbackState = .idle
         progress = nil
     }
+
+    func cancelActiveInteraction() {
+        guard let session = activeInteractionSession,
+              session.canCancel else {
+            return
+        }
+
+        switch session.mode {
+        case .dictateVerbatim:
+            cancelDictation()
+        case .readback:
+            stop()
+        case .askAI, .transformText:
+            interactionCoordinator.cancelActiveSession(
+                message: "Interaction cancelled.",
+                performCancel: {}
+            )
+        }
+    }
     
     /// Toggle play/pause
     func togglePlayPause() {
@@ -623,6 +646,7 @@ final class AppState {
             DispatchQueue.main.async {
                 self?.errorMessage = error.localizedDescription
                 self?.playbackState = .idle
+                self?.progress = nil
                 self?.interactionCoordinator.failActiveSession(
                     reason: .serviceError,
                     message: error.localizedDescription

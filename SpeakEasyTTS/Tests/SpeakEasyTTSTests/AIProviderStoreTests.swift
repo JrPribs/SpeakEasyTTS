@@ -30,6 +30,27 @@ struct AIProviderStoreTests {
     }
 
     @Test
+    func configuredLocalProviderCanPersistNoCredentialRequirement() throws {
+        let harness = try StoreHarness()
+
+        harness.store.markConfigured(providerID: "ollama", credentialStorage: .notRequired)
+
+        let reloaded = AIProviderStore(defaults: harness.defaults).loadStatus()
+        let rawJSON = try harness.rawStoredJSON()
+
+        #expect(reloaded == AIProviderStatus(
+            state: .configured,
+            providerID: "ollama",
+            credentialStorage: .notRequired
+        ))
+        #expect(reloaded.credentialStorage.displayName == "Not Required")
+        #expect(rawJSON.contains("notRequired"))
+        #expect(!rawJSON.localizedCaseInsensitiveContains("apiKey"))
+        #expect(!rawJSON.localizedCaseInsensitiveContains("secret"))
+        #expect(!rawJSON.contains("sk-"))
+    }
+
+    @Test
     func errorStatusPersistsUserVisibleMessage() throws {
         let harness = try StoreHarness()
 
@@ -39,6 +60,20 @@ struct AIProviderStoreTests {
             state: .error,
             providerID: "openai",
             message: "Credential missing."
+        ))
+    }
+
+    @Test
+    func providerErrorPersistsLocalizedMessage() throws {
+        let harness = try StoreHarness()
+
+        harness.store.markError(providerID: "ollama", error: .rateLimited, credentialStorage: .notRequired)
+
+        #expect(AIProviderStore(defaults: harness.defaults).loadStatus() == AIProviderStatus(
+            state: .error,
+            providerID: "ollama",
+            message: "AI provider rate limit was reached.",
+            credentialStorage: .notRequired
         ))
     }
 

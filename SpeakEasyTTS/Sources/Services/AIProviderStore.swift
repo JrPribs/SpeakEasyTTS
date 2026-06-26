@@ -4,6 +4,7 @@
 import Foundation
 
 enum AICredentialStorage: Codable, Equatable, Hashable {
+    case notRequired
     case keychain(service: String, account: String)
 
     static let defaultKeychain = AICredentialStorage.keychain(
@@ -13,6 +14,8 @@ enum AICredentialStorage: Codable, Equatable, Hashable {
 
     var displayName: String {
         switch self {
+        case .notRequired:
+            return "Not Required"
         case .keychain:
             return "macOS Keychain"
         }
@@ -91,21 +94,40 @@ final class AIProviderStore {
         return status
     }
 
-    func markConfigured(providerID: String) {
+    func markConfigured(
+        providerID: String,
+        credentialStorage: AICredentialStorage = .defaultKeychain
+    ) {
         saveStatus(AIProviderStatus(
             state: .configured,
             providerID: providerID,
-            credentialStorage: .defaultKeychain
+            credentialStorage: credentialStorage
         ))
     }
 
-    func markError(providerID: String?, message: String) {
+    func markError(
+        providerID: String?,
+        message: String,
+        credentialStorage: AICredentialStorage = .defaultKeychain
+    ) {
         saveStatus(AIProviderStatus(
             state: .error,
             providerID: providerID,
             message: message,
-            credentialStorage: .defaultKeychain
+            credentialStorage: credentialStorage
         ))
+    }
+
+    func markError(
+        providerID: String?,
+        error: AIProviderError,
+        credentialStorage: AICredentialStorage = .defaultKeychain
+    ) {
+        markError(
+            providerID: providerID,
+            message: error.localizedDescription,
+            credentialStorage: credentialStorage
+        )
     }
 
     func reset() {

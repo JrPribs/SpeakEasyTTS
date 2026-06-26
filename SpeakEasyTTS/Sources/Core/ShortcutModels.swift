@@ -59,6 +59,10 @@ struct KeyboardShortcut: Codable, Equatable, Hashable {
 
         return "\(modifierName)+\(keyName) / \(symbolName)\(keyName)"
     }
+
+    func matches(_ other: KeyboardShortcut) -> Bool {
+        keyCode == other.keyCode && modifiers == other.modifiers
+    }
 }
 
 enum ShortcutTriggerAction: String, Codable, CaseIterable, Equatable, Hashable {
@@ -123,14 +127,50 @@ struct ShortcutPreferences: Codable, Equatable, Hashable {
 }
 
 enum KeyCodeDisplayName {
+    static let a: UInt32 = 0
     static let s: UInt32 = 1
     static let d: UInt32 = 2
+    static let f: UInt32 = 3
+    static let h: UInt32 = 4
+    static let g: UInt32 = 5
+    static let z: UInt32 = 6
+    static let x: UInt32 = 7
+    static let c: UInt32 = 8
+    static let v: UInt32 = 9
+    static let b: UInt32 = 11
+    static let q: UInt32 = 12
+    static let w: UInt32 = 13
+    static let e: UInt32 = 14
+    static let r: UInt32 = 15
+    static let y: UInt32 = 16
+    static let t: UInt32 = 17
+    static let tab: UInt32 = 48
     static let space: UInt32 = 49
+    static let delete: UInt32 = 51
+    static let escape: UInt32 = 53
 
     private static let knownNames: [UInt32: String] = [
+        a: "A",
         s: "S",
         d: "D",
-        space: "Space"
+        f: "F",
+        h: "H",
+        g: "G",
+        z: "Z",
+        x: "X",
+        c: "C",
+        v: "V",
+        b: "B",
+        q: "Q",
+        w: "W",
+        e: "E",
+        r: "R",
+        y: "Y",
+        t: "T",
+        tab: "Tab",
+        space: "Space",
+        delete: "Delete",
+        escape: "Escape"
     ]
 
     static func name(for keyCode: UInt32) -> String {

@@ -330,17 +330,19 @@ struct ShortcutsTab: View {
     var body: some View {
         Form {
             Section("Global Shortcuts") {
-                HStack {
-                    Text("Read Selected Text")
-                    Spacer()
-                    KeyboardShortcutView(shortcut: "⌥S")
-                }
-                
-                HStack {
-                    Text("Toggle Dictation")
-                    Spacer()
-                    KeyboardShortcutView(shortcut: "⌥D")
-                }
+                ShortcutRecorderRow(
+                    title: "Read Selected Text",
+                    shortcut: appState.settings.shortcuts.readSelection.shortcut,
+                    onRecord: { saveShortcut($0, for: .readSelection) },
+                    onReset: { resetShortcut(for: .readSelection) }
+                )
+
+                ShortcutRecorderRow(
+                    title: "Toggle Dictation",
+                    shortcut: appState.settings.shortcuts.dictation.shortcut,
+                    onRecord: { saveShortcut($0, for: .toggleDictation) },
+                    onReset: { resetShortcut(for: .toggleDictation) }
+                )
             }
             
             Section("Playback Controls") {
@@ -381,6 +383,60 @@ struct ShortcutsTab: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private func saveShortcut(_ shortcut: KeyboardShortcut, for action: ShortcutTriggerAction) -> String? {
+        if let validationMessage = validationMessage(for: shortcut, replacing: action) {
+            return validationMessage
+        }
+
+        var preferences = appState.settings.shortcuts
+        switch action {
+        case .readSelection:
+            preferences.readSelection.shortcut = shortcut
+        case .toggleDictation:
+            preferences.dictation.shortcut = shortcut
+        }
+        appState.updateShortcutPreferences(preferences)
+        return nil
+    }
+
+    private func resetShortcut(for action: ShortcutTriggerAction) {
+        var preferences = appState.settings.shortcuts
+        switch action {
+        case .readSelection:
+            preferences.readSelection = .defaultReadSelection
+        case .toggleDictation:
+            preferences.dictation = .defaultDictation
+        }
+        appState.updateShortcutPreferences(preferences)
+    }
+
+    private func validationMessage(for shortcut: KeyboardShortcut, replacing action: ShortcutTriggerAction) -> String? {
+        let hasPrimaryModifier = shortcut.modifiers.contains(.command)
+            || shortcut.modifiers.contains(.option)
+            || shortcut.modifiers.contains(.control)
+        guard hasPrimaryModifier else {
+            return "Use Command, Option, or Control."
+        }
+
+        if shortcut.keyCode == KeyCodeDisplayName.escape {
+            return "Escape is reserved."
+        }
+
+        let preferences = appState.settings.shortcuts
+        switch action {
+        case .readSelection:
+            if shortcut.matches(preferences.dictation.shortcut) {
+                return "Already used by Dictation."
+            }
+        case .toggleDictation:
+            if shortcut.matches(preferences.readSelection.shortcut) {
+                return "Already used by Read Selected Text."
+            }
+        }
+
+        return nil
     }
 }
 

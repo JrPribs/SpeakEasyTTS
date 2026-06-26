@@ -49,10 +49,21 @@ struct ShortcutModelTests {
     @Test
     func displayNamesAreStableForKnownAndUnknownKeys() {
         let optionSpace = KeyboardShortcut(keyCode: KeyCodeDisplayName.space, modifiers: .option)
+        let commandTab = KeyboardShortcut(keyCode: KeyCodeDisplayName.tab, modifiers: .command)
         let commandShiftUnknown = KeyboardShortcut(keyCode: 123, modifiers: [.command, .shift])
 
         #expect(optionSpace.displayName == "Option+Space / ⌥Space")
+        #expect(commandTab.displayName == "Command+Tab / ⌘Tab")
         #expect(commandShiftUnknown.displayName == "Shift+Command+Key 123 / ⇧⌘Key 123")
+    }
+
+    @Test
+    func shortcutMatchingIgnoresStoredDisplayName() {
+        let first = KeyboardShortcut(keyCode: KeyCodeDisplayName.d, modifiers: .option)
+        let second = KeyboardShortcut(keyCode: KeyCodeDisplayName.d, modifiers: .option, displayName: "Custom")
+
+        #expect(first.matches(second))
+        #expect(first != second)
     }
 
     @Test

@@ -111,6 +111,26 @@ struct SettingsTests {
     }
 
     @Test
+    func dictationTriggerModesPersistAndReloadFromInjectedDefaults() throws {
+        for mode in DictationTriggerMode.allCases {
+            let suiteName = "SettingsTests-\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suiteName))
+            defaults.removePersistentDomain(forName: suiteName)
+            defer {
+                defaults.removePersistentDomain(forName: suiteName)
+            }
+
+            let store = SettingsStore(defaults: defaults)
+            var settings = SpeechSettings.default
+            settings.shortcuts.dictation.triggerMode = mode
+
+            store.saveSettings(settings)
+
+            #expect(store.loadSettings().shortcuts.dictation.triggerMode == mode)
+        }
+    }
+
+    @Test
     func resetSettingsRestoresDefaultShortcuts() throws {
         let suiteName = "SettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

@@ -12,19 +12,6 @@ struct GeneralSettingsTab: View {
                 Toggle("Show in Dock", isOn: $showInDock)
             }
 
-            Section("Dictation") {
-                HStack {
-                    Text("Mode")
-                    Spacer()
-                    Label("Verbatim", systemImage: "text.quote")
-                        .foregroundStyle(.secondary)
-                }
-
-                Text("Dictation inserts the recognized words directly, with no AI rewrite or cleanup step.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             Section("TTS Engine") {
                 Picker("Engine", selection: Binding(
                     get: { appState.settings.ttsEngine },

@@ -15,6 +15,12 @@ struct SettingsView: View {
                     Label("General", systemImage: "gear")
                 }
 
+            DictationSettingsTab()
+                .environment(appState)
+                .tabItem {
+                    Label("Dictation", systemImage: "mic")
+                }
+
             VoiceSettingsTab()
                 .environment(appState)
                 .tabItem {

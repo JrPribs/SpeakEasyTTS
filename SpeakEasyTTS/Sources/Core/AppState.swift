@@ -25,6 +25,7 @@ final class AppState {
     var dictationState: DictationState = .idle
     var dictationTriggerState: DictationTriggerState = .inactive
     var dictationTranscript: String = ""
+    var activeInteractionSession: InteractionSession?
 
     var isDictationHeld: Bool {
         if case .holding = dictationTriggerState {
@@ -66,6 +67,7 @@ final class AppState {
     let voiceManager: VoiceManager
     let clipboardService: ClipboardService
     let claudeCodeService = ClaudeCodeService()
+    let interactionCoordinator = InteractionCoordinator()
     private let dictationService = DictationService()
     
     // MARK: - Private
@@ -102,6 +104,7 @@ final class AppState {
         loadVoices()
         
         // Set up speech service delegate
+        setupInteractionCoordinatorCallbacks()
         setupSpeechServiceCallbacks()
         setupDictationServiceCallbacks()
         
@@ -264,11 +267,21 @@ final class AppState {
     
     /// Start speaking the given text
     func speak(_ text: String) {
+        speak(text, source: InteractionSource(kind: .manualText, text: text))
+    }
+
+    private func speak(_ text: String, source: InteractionSource) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "No text to speak"
             return
         }
 
+        interactionCoordinator.beginReadback(source: source, text: text) { [weak self] text in
+            self?.performSpeak(text)
+        }
+    }
+
+    private func performSpeak(_ text: String) {
         if settings.ttsEngine == .edgeTTS && !EdgeTTSService.isAvailable() {
             print("[TTS] Edge TTS unavailable; falling back to native macOS speech")
             switchEngine(.native)
@@ -308,7 +321,7 @@ final class AppState {
     /// Speak text from clipboard
     func speakFromClipboard() {
         if let text = clipboardService.getText() {
-            speak(text)
+            speak(text, source: InteractionSource(kind: .clipboard, text: text))
         } else {
             errorMessage = "Clipboard is empty or contains non-text content"
         }
@@ -319,7 +332,7 @@ final class AppState {
         // Get selected text using the improved method
         clipboardService.getSelectedText { [weak self] text in
             if let text = text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                self?.speak(text)
+                self?.speak(text, source: InteractionSource(kind: .selectedText, text: text))
             } else {
                 self?.errorMessage = "No text selected. Please select some text first."
             }
@@ -340,6 +353,15 @@ final class AppState {
     
     /// Stop speech completely
     func stop() {
+        interactionCoordinator.cancelActiveSession(
+            message: "Speech stopped.",
+            performCancel: { [weak self] in
+                self?.performStopSpeech()
+            }
+        )
+    }
+
+    private func performStopSpeech() {
         speechService.stop()
         playbackState = .idle
         progress = nil
@@ -376,8 +398,16 @@ final class AppState {
     func startDictation() {
         guard dictationState == .idle else { return }
 
+        interactionCoordinator.startDictation(triggerState: dictationTriggerState) { [weak self] in
+            self?.performStartDictation()
+        }
+    }
+
+    private func performStartDictation() {
+        guard dictationState == .idle else { return }
+
         if playbackState != .idle {
-            stop()
+            performStopSpeech()
         }
 
         clipboardService.trackFrontmostApp()
@@ -392,6 +422,12 @@ final class AppState {
     func stopDictationAndInsert() {
         let textToInsert = dictationTranscript
         dictationTriggerState = .inactive
+        interactionCoordinator.finishDictation(transcript: textToInsert) { [weak self] in
+            self?.performStopDictationAndInsert(textToInsert)
+        }
+    }
+
+    private func performStopDictationAndInsert(_ textToInsert: String) {
         dictationService.stop()
         insertDictatedText(textToInsert)
     }
@@ -412,6 +448,7 @@ final class AppState {
 
         if case .holding(true, let isLatched) = dictationTriggerState {
             dictationTriggerState = .holding(canLatch: true, isLatched: !isLatched)
+            interactionCoordinator.updateDictationTriggerState(dictationTriggerState)
         }
     }
 
@@ -423,6 +460,7 @@ final class AppState {
 
         if case .holding(_, true) = dictationTriggerState {
             dictationTriggerState = .latched
+            interactionCoordinator.updateDictationTriggerState(dictationTriggerState)
             return
         }
 
@@ -442,6 +480,15 @@ final class AppState {
     /// Stop dictation without inserting text.
     func cancelDictation() {
         dictationTriggerState = .inactive
+        interactionCoordinator.cancelActiveSession(
+            message: "Dictation cancelled.",
+            performCancel: { [weak self] in
+                self?.performCancelDictation()
+            }
+        )
+    }
+
+    private func performCancelDictation() {
         dictationService.stop()
         dictationTranscript = ""
         hasInsertedCurrentDictation = false
@@ -509,7 +556,7 @@ final class AppState {
             return
         }
         let processed = claudeCodeService.preprocessForSpeech(content)
-        speak(processed)
+        speak(processed, source: InteractionSource(kind: .file, text: processed, url: url))
     }
 
     /// Show file picker and read the selected plan file
@@ -526,7 +573,7 @@ final class AppState {
         if panel.runModal() == .OK, let url = panel.url {
             if let content = claudeCodeService.readPlan(at: url) {
                 let processed = claudeCodeService.preprocessForSpeech(content)
-                speak(processed)
+                speak(processed, source: InteractionSource(kind: .file, text: processed, url: url))
             }
         }
     }
@@ -602,10 +649,19 @@ final class AppState {
         }
     }
 
+    private func setupInteractionCoordinatorCallbacks() {
+        interactionCoordinator.onSessionChange = { [weak self] session in
+            DispatchQueue.main.async {
+                self?.activeInteractionSession = session
+            }
+        }
+    }
+
     private func setupSpeechServiceCallbacks() {
         speechService.onStateChange = { [weak self] state in
             DispatchQueue.main.async {
                 self?.playbackState = state
+                self?.interactionCoordinator.updatePlaybackState(state)
             }
         }
         
@@ -619,6 +675,10 @@ final class AppState {
             DispatchQueue.main.async {
                 self?.errorMessage = error.localizedDescription
                 self?.playbackState = .idle
+                self?.interactionCoordinator.failActiveSession(
+                    reason: .serviceError,
+                    message: error.localizedDescription
+                )
             }
         }
     }
@@ -626,7 +686,14 @@ final class AppState {
     private func setupDictationServiceCallbacks() {
         dictationService.onStateChange = { [weak self] state in
             DispatchQueue.main.async {
-                self?.dictationState = state
+                guard let self else { return }
+
+                self.dictationState = state
+                self.interactionCoordinator.updateDictationState(
+                    state,
+                    triggerState: self.dictationTriggerState,
+                    transcript: self.dictationTranscript
+                )
             }
         }
 
@@ -635,6 +702,7 @@ final class AppState {
                 guard let self else { return }
 
                 self.dictationTranscript = transcript
+                self.interactionCoordinator.updateDictationTranscript(transcript)
 
                 if isFinal {
                     self.insertDictatedText(transcript)
@@ -647,6 +715,10 @@ final class AppState {
                 self?.errorMessage = error.localizedDescription
                 self?.dictationState = .idle
                 self?.dictationTriggerState = .inactive
+                self?.interactionCoordinator.failActiveSession(
+                    reason: .serviceError,
+                    message: error.localizedDescription
+                )
             }
         }
     }
@@ -655,6 +727,10 @@ final class AppState {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
             errorMessage = "No dictation text captured."
+            interactionCoordinator.failActiveSession(
+                reason: .emptyInput,
+                message: "No dictation text captured."
+            )
             return
         }
         guard !hasInsertedCurrentDictation else { return }
@@ -665,9 +741,14 @@ final class AppState {
 
             if didInsert {
                 self.dictationTranscript = normalized
+                self.interactionCoordinator.completeActiveSession(transcript: normalized)
             } else {
                 self.errorMessage = "Could not insert dictated text. Click into a text field and try again."
                 self.hasInsertedCurrentDictation = false
+                self.interactionCoordinator.failActiveSession(
+                    reason: .destinationUnavailable,
+                    message: "Could not insert dictated text. Click into a text field and try again."
+                )
             }
         }
     }

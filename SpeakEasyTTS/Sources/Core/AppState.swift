@@ -72,7 +72,6 @@ final class AppState {
     
     // MARK: - Private
     private var cancellables = Set<AnyCancellable>()
-    private var hasInsertedCurrentDictation = false
     
     // MARK: - Initialization
     
@@ -385,113 +384,38 @@ final class AppState {
 
     /// Toggle native speech-to-text dictation. Completed text is pasted into the last focused app.
     func toggleDictation() {
-        dictationTriggerState = .inactive
-        switch dictationState {
-        case .idle:
-            startDictation()
-        case .authorizing, .recording:
-            stopDictationAndInsert()
-        }
+        interactionCoordinator.toggleDictation(dependencies: dictationDependencies)
     }
 
     /// Start verbatim dictation without AI rewriting or cleanup.
     func startDictation() {
-        guard dictationState == .idle else { return }
-
-        interactionCoordinator.startDictation(triggerState: dictationTriggerState) { [weak self] in
-            self?.performStartDictation()
-        }
-    }
-
-    private func performStartDictation() {
-        guard dictationState == .idle else { return }
-
-        if playbackState != .idle {
-            performStopSpeech()
-        }
-
-        clipboardService.trackFrontmostApp()
-        dictationTranscript = ""
-        hasInsertedCurrentDictation = false
-        errorMessage = nil
-
-        dictationService.start()
+        interactionCoordinator.startDictation(dependencies: dictationDependencies)
     }
 
     /// Stop dictation and insert the captured transcript into the focused app.
     func stopDictationAndInsert() {
-        let textToInsert = dictationTranscript
-        dictationTriggerState = .inactive
-        interactionCoordinator.finishDictation(transcript: textToInsert) { [weak self] in
-            self?.performStopDictationAndInsert(textToInsert)
-        }
-    }
-
-    private func performStopDictationAndInsert(_ textToInsert: String) {
-        dictationService.stop()
-        insertDictatedText(textToInsert)
+        interactionCoordinator.stopDictationAndInsert(dependencies: dictationDependencies)
     }
 
     func beginHoldDictation(canLatch: Bool) {
-        if dictationTriggerState == .latched {
-            stopDictationAndInsert()
-            return
-        }
-
-        guard dictationState == .idle else { return }
-        dictationTriggerState = .holding(canLatch: canLatch, isLatched: false)
-        startDictation()
+        interactionCoordinator.beginHoldDictation(
+            canLatch: canLatch,
+            dependencies: dictationDependencies
+        )
     }
 
     func latchHoldDictation() {
-        guard dictationState != .idle else { return }
-
-        if case .holding(true, let isLatched) = dictationTriggerState {
-            dictationTriggerState = .holding(canLatch: true, isLatched: !isLatched)
-            interactionCoordinator.updateDictationTriggerState(dictationTriggerState)
-        }
+        interactionCoordinator.latchHoldDictation()
     }
 
     /// Finish a hold-to-record session. If release happens during authorization, cancel without inserting.
     func finishHoldDictation() {
-        if case .latched = dictationTriggerState {
-            return
-        }
-
-        if case .holding(_, true) = dictationTriggerState {
-            dictationTriggerState = .latched
-            interactionCoordinator.updateDictationTriggerState(dictationTriggerState)
-            return
-        }
-
-        guard case .holding = dictationTriggerState else { return }
-        dictationTriggerState = .inactive
-
-        switch dictationState {
-        case .recording:
-            stopDictationAndInsert()
-        case .authorizing:
-            cancelDictation()
-        case .idle:
-            break
-        }
+        interactionCoordinator.finishHoldDictation(dependencies: dictationDependencies)
     }
 
     /// Stop dictation without inserting text.
     func cancelDictation() {
-        dictationTriggerState = .inactive
-        interactionCoordinator.cancelActiveSession(
-            message: "Dictation cancelled.",
-            performCancel: { [weak self] in
-                self?.performCancelDictation()
-            }
-        )
-    }
-
-    private func performCancelDictation() {
-        dictationService.stop()
-        dictationTranscript = ""
-        hasInsertedCurrentDictation = false
+        interactionCoordinator.cancelDictation(dependencies: dictationDependencies)
     }
     
     // MARK: - Settings
@@ -655,6 +579,30 @@ final class AppState {
                 self?.activeInteractionSession = session
             }
         }
+
+        interactionCoordinator.onDictationStateChange = { [weak self] state in
+            DispatchQueue.main.async {
+                self?.dictationState = state
+            }
+        }
+
+        interactionCoordinator.onDictationTriggerStateChange = { [weak self] triggerState in
+            DispatchQueue.main.async {
+                self?.dictationTriggerState = triggerState
+            }
+        }
+
+        interactionCoordinator.onDictationTranscriptChange = { [weak self] transcript in
+            DispatchQueue.main.async {
+                self?.dictationTranscript = transcript
+            }
+        }
+
+        interactionCoordinator.onDictationErrorMessageChange = { [weak self] message in
+            DispatchQueue.main.async {
+                self?.errorMessage = message
+            }
+        }
     }
 
     private func setupSpeechServiceCallbacks() {
@@ -686,14 +634,7 @@ final class AppState {
     private func setupDictationServiceCallbacks() {
         dictationService.onStateChange = { [weak self] state in
             DispatchQueue.main.async {
-                guard let self else { return }
-
-                self.dictationState = state
-                self.interactionCoordinator.updateDictationState(
-                    state,
-                    triggerState: self.dictationTriggerState,
-                    transcript: self.dictationTranscript
-                )
+                self?.interactionCoordinator.handleDictationStateChange(state)
             }
         }
 
@@ -701,55 +642,46 @@ final class AppState {
             DispatchQueue.main.async {
                 guard let self else { return }
 
-                self.dictationTranscript = transcript
-                self.interactionCoordinator.updateDictationTranscript(transcript)
-
-                if isFinal {
-                    self.insertDictatedText(transcript)
-                }
+                self.interactionCoordinator.handleDictationTranscript(
+                    transcript,
+                    isFinal: isFinal,
+                    dependencies: self.dictationDependencies
+                )
             }
         }
 
         dictationService.onError = { [weak self] error in
             DispatchQueue.main.async {
-                self?.errorMessage = error.localizedDescription
-                self?.dictationState = .idle
-                self?.dictationTriggerState = .inactive
-                self?.interactionCoordinator.failActiveSession(
-                    reason: .serviceError,
-                    message: error.localizedDescription
-                )
+                self?.interactionCoordinator.handleDictationError(error.localizedDescription)
             }
         }
     }
 
-    private func insertDictatedText(_ text: String) {
-        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else {
-            errorMessage = "No dictation text captured."
-            interactionCoordinator.failActiveSession(
-                reason: .emptyInput,
-                message: "No dictation text captured."
-            )
-            return
-        }
-        guard !hasInsertedCurrentDictation else { return }
+    private var dictationDependencies: InteractionCoordinator.DictationDependencies {
+        InteractionCoordinator.DictationDependencies(
+            playbackState: { [weak self] in
+                self?.playbackState ?? .idle
+            },
+            stopPlayback: { [weak self] in
+                self?.performStopSpeech()
+            },
+            trackTargetApp: { [weak self] in
+                self?.clipboardService.trackFrontmostApp()
+            },
+            startDictation: { [weak self] in
+                self?.dictationService.start()
+            },
+            stopDictation: { [weak self] in
+                self?.dictationService.stop()
+            },
+            insertText: { [weak self] text, completion in
+                guard let self else {
+                    completion(false)
+                    return
+                }
 
-        hasInsertedCurrentDictation = true
-        clipboardService.insertTextIntoLastFocusedApp(normalized) { [weak self] didInsert in
-            guard let self else { return }
-
-            if didInsert {
-                self.dictationTranscript = normalized
-                self.interactionCoordinator.completeActiveSession(transcript: normalized)
-            } else {
-                self.errorMessage = "Could not insert dictated text. Click into a text field and try again."
-                self.hasInsertedCurrentDictation = false
-                self.interactionCoordinator.failActiveSession(
-                    reason: .destinationUnavailable,
-                    message: "Could not insert dictated text. Click into a text field and try again."
-                )
+                self.clipboardService.insertTextIntoLastFocusedApp(text, completion: completion)
             }
-        }
+        )
     }
 }

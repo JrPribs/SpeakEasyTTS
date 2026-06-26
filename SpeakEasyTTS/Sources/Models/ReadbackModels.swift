@@ -10,6 +10,21 @@ enum ReadbackProfile: String, Codable, CaseIterable, Equatable, Hashable {
     case planSummary
     case taskList
 
+    var displayName: String {
+        switch self {
+        case .raw:
+            return "Raw"
+        case .cleanProse:
+            return "Clean Prose"
+        case .technicalResponse:
+            return "Summarized Response"
+        case .planSummary:
+            return "Plan Summary"
+        case .taskList:
+            return "Task List"
+        }
+    }
+
     var defaultDetailLevel: ReadbackDetailLevel {
         switch self {
         case .raw, .cleanProse, .technicalResponse:
@@ -55,6 +70,17 @@ enum ReadbackDetailLevel: String, Codable, CaseIterable, Equatable, Hashable {
     case concise
     case standard
     case detailed
+
+    var displayName: String {
+        switch self {
+        case .concise:
+            return "Brief"
+        case .standard:
+            return "Standard"
+        case .detailed:
+            return "Detailed"
+        }
+    }
 }
 
 struct ReadbackProcessingOptions: Codable, Equatable, Hashable {
@@ -108,4 +134,22 @@ struct ReadbackRequest: Codable, Equatable, Hashable {
 struct ReadbackResult: Codable, Equatable, Hashable {
     var request: ReadbackRequest
     var spokenText: String
+}
+
+struct ReadbackPreferences: Codable, Equatable, Hashable {
+    var defaultProfile: ReadbackProfile
+    var defaultDetailLevel: ReadbackDetailLevel
+    var requestAISummaryByDefault: Bool
+
+    static let `default` = ReadbackPreferences(
+        defaultProfile: .raw,
+        defaultDetailLevel: .standard,
+        requestAISummaryByDefault: false
+    )
+
+    var processingOptions: ReadbackProcessingOptions {
+        var options = defaultProfile.defaultProcessingOptions
+        options.requestAISummary = requestAISummaryByDefault
+        return options
+    }
 }

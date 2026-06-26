@@ -30,37 +30,6 @@ struct GeneralSettingsTab: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Auto-Read") {
-                Toggle("Auto-read selected text", isOn: Binding(
-                    get: { appState.settings.autoReadOnSelection },
-                    set: { appState.updateAutoReadOnSelection($0) }
-                ))
-
-                if appState.settings.autoReadOnSelection {
-                    HStack {
-                        Text("Delay before reading")
-                        Spacer()
-                        Slider(
-                            value: Binding(
-                                get: { appState.settings.autoReadDelay },
-                                set: { appState.updateAutoReadDelay($0) }
-                            ),
-                            in: 0.3...2.0,
-                            step: 0.1
-                        )
-                        .frame(width: 150)
-
-                        Text(String(format: "%.1fs", appState.settings.autoReadDelay))
-                            .frame(width: 40)
-                            .monospacedDigit()
-                    }
-                }
-
-                Text("When enabled, text will automatically be read aloud after selection.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             Section("Playback") {
                 HStack {
                     Text("Default Speed")

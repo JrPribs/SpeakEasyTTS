@@ -80,6 +80,7 @@ struct SettingsTests {
         let settings = try JSONDecoder().decode(SpeechSettings.self, from: data)
 
         #expect(settings.shortcuts == .default)
+        #expect(settings.readback == .default)
     }
 
     @Test
@@ -128,6 +129,34 @@ struct SettingsTests {
 
             #expect(store.loadSettings().shortcuts.dictation.triggerMode == mode)
         }
+    }
+
+    @Test
+    func readbackPreferencesPersistAndReloadFromInjectedDefaults() throws {
+        let suiteName = "SettingsTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = SettingsStore(defaults: defaults)
+        var settings = SpeechSettings.default
+        settings.readback = ReadbackPreferences(
+            defaultProfile: .technicalResponse,
+            defaultDetailLevel: .detailed,
+            requestAISummaryByDefault: true
+        )
+
+        store.saveSettings(settings)
+
+        #expect(store.loadSettings().readback == settings.readback)
+        #expect(store.loadSettings().readback.processingOptions == ReadbackProcessingOptions(
+            normalizeMarkdown: true,
+            summarizeCodeBlocks: true,
+            preserveTaskStructure: true,
+            requestAISummary: true
+        ))
     }
 
     @Test

@@ -243,6 +243,21 @@ final class AppState {
         updateShortcutPreferences(shortcuts)
     }
 
+    func updateDefaultReadbackProfile(_ profile: ReadbackProfile) {
+        settings.readback.defaultProfile = profile
+        saveSettings()
+    }
+
+    func updateDefaultReadbackDetailLevel(_ detailLevel: ReadbackDetailLevel) {
+        settings.readback.defaultDetailLevel = detailLevel
+        saveSettings()
+    }
+
+    func updateRequestAISummaryByDefault(_ enabled: Bool) {
+        settings.readback.requestAISummaryByDefault = enabled
+        saveSettings()
+    }
+
     func refreshAIProviderStatus() {
         aiProviderStatus = aiProviderStore.loadStatus()
     }
@@ -364,8 +379,22 @@ final class AppState {
     }
 
     private func speakResolvedSource(_ source: TextSourceResult) {
-        interactionCoordinator.beginReadback(source: source.source, text: source.text) { [weak self] text in
-            self?.performSpeak(text)
+        let preferences = settings.readback
+        let request = ReadbackRequest(
+            source: source.source,
+            text: source.text,
+            profile: preferences.defaultProfile,
+            detailLevel: preferences.defaultDetailLevel,
+            processingOptions: preferences.processingOptions
+        )
+
+        Task {
+            let result = await readbackPipeline.processWithOptionalSummary(request)
+            await MainActor.run {
+                self.interactionCoordinator.beginReadback(source: source.source, text: result.spokenText) { [weak self] text in
+                    self?.performSpeak(text)
+                }
+            }
         }
     }
 

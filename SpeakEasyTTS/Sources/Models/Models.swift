@@ -130,6 +130,7 @@ struct SpeechSettings: Codable, Equatable {
     var autoReadOnSelection: Bool
     var autoReadDelay: Double
     var shortcuts: ShortcutPreferences = .default
+    var readback: ReadbackPreferences = .default
     
     /// TTS engine selection
     enum TTSEngine: String, Codable, CaseIterable {
@@ -155,7 +156,8 @@ struct SpeechSettings: Codable, Equatable {
         ttsEngine: .native,
         autoReadOnSelection: false,  // Disabled by default
         autoReadDelay: 0.8,  // 0.8 second debounce delay
-        shortcuts: .default
+        shortcuts: .default,
+        readback: .default
     )
     
     /// Rate as words per minute (approximate)
@@ -180,6 +182,7 @@ extension SpeechSettings {
         case autoReadOnSelection
         case autoReadDelay
         case shortcuts
+        case readback
     }
 
     init(from decoder: Decoder) throws {
@@ -193,6 +196,7 @@ extension SpeechSettings {
         autoReadOnSelection = try container.decode(Bool.self, forKey: .autoReadOnSelection)
         autoReadDelay = try container.decode(Double.self, forKey: .autoReadDelay)
         shortcuts = try container.decodeIfPresent(ShortcutPreferences.self, forKey: .shortcuts) ?? .default
+        readback = try container.decodeIfPresent(ReadbackPreferences.self, forKey: .readback) ?? .default
     }
 
     func encode(to encoder: Encoder) throws {
@@ -206,6 +210,7 @@ extension SpeechSettings {
         try container.encode(autoReadOnSelection, forKey: .autoReadOnSelection)
         try container.encode(autoReadDelay, forKey: .autoReadDelay)
         try container.encode(shortcuts, forKey: .shortcuts)
+        try container.encode(readback, forKey: .readback)
     }
 }
 

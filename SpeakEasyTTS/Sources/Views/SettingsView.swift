@@ -27,6 +27,12 @@ struct SettingsView: View {
                     Label("Voices", systemImage: "person.wave.2")
                 }
 
+            ReadbackSettingsTab()
+                .environment(appState)
+                .tabItem {
+                    Label("Readback", systemImage: "speaker.wave.2")
+                }
+
             ShortcutsTab()
                 .environment(appState)
                 .tabItem {

@@ -94,4 +94,130 @@ struct ReadbackPipelineTests {
         #expect(result.request == request)
         #expect(result.spokenText == "Clipboard text")
     }
+
+    @Test
+    func normalizesMarkdownStructureForSpeech() {
+        let markdown = """
+        # Title
+
+        ## Overview
+
+        ### Details
+        - Bullet with `inlineCode`
+        * Second [link](https://example.com)
+        1. Run `swift test`
+        2) Open Sources/Core/AppState.swift
+        - [x] Complete **done**
+        - [ ] Pending item
+        > quoted *text*
+        > and file Sources/Services/TextSourceService.swift
+
+        | File | Status |
+        | --- | --- |
+        | Sources/Core/AppState.swift | Updated |
+        """
+
+        let spoken = normalize(markdown)
+
+        #expect(spoken == """
+        Title.
+
+        Section: Overview.
+
+        Sub-section: Details.
+        Bullet with inlineCode.
+        Second link.
+        Step 1: Run swift test.
+        Step 2: Open Sources, Core, AppState dot swift.
+        Completed: Complete done.
+        To do: Pending item.
+        Quote: quoted text and file Sources, Services, TextSourceService dot swift.
+
+        Table: File, Status.
+        Row 1: Sources, Core, AppState dot swift, Updated.
+        """)
+    }
+
+    @Test
+    func fencedCodeBlocksBecomeSpokenPlaceholders() {
+        let markdown = """
+        Before.
+
+        ```swift
+        let value = "not spoken"
+        print(value)
+        ```
+
+        ```
+        raw block
+        ```
+
+        After.
+        """
+
+        let spoken = normalize(markdown)
+
+        #expect(spoken == """
+        Before.
+
+        swift code block omitted.
+
+        Code block omitted.
+
+        After.
+        """)
+        #expect(!spoken.contains("not spoken"))
+        #expect(!spoken.contains("raw block"))
+    }
+
+    @Test
+    func representativeCodexResponseNormalizesWithoutDroppingCodeBlocks() throws {
+        let markdown = try String(contentsOf: try fixtureURL("codex-response.md"), encoding: .utf8)
+        let spoken = normalize(markdown)
+
+        #expect(spoken.contains("Implementation Notes."))
+        #expect(spoken.contains("Quote: Verified in the local SwiftPM package."))
+        #expect(spoken.contains("Section: Changed Files."))
+        #expect(spoken.contains("SpeakEasyTTS, Sources, Core, ReadbackPipeline dot swift."))
+        #expect(spoken.contains("Completed: Add deterministic normalizer."))
+        #expect(spoken.contains("To do: Wire summaries later."))
+        #expect(spoken.contains("Step 1: Run swift test."))
+        #expect(spoken.contains("Table: Area, Status."))
+        #expect(spoken.contains("swift code block omitted."))
+        #expect(!spoken.contains("let value"))
+    }
+
+    private func normalize(_ text: String) -> String {
+        let request = ReadbackRequest(
+            source: InteractionSource(kind: .selectedText, text: text),
+            text: text,
+            profile: .cleanProse
+        )
+
+        return ReadbackPipeline().process(request).spokenText
+    }
+
+    private func fixtureURL(_ name: String) throws -> URL {
+        let fixture = URL(fileURLWithPath: name)
+        let resourceName = fixture.deletingPathExtension().lastPathComponent
+        let resourceExtension = fixture.pathExtension.isEmpty ? nil : fixture.pathExtension
+
+        if let url = Bundle.module.url(
+            forResource: resourceName,
+            withExtension: resourceExtension,
+            subdirectory: "Fixtures"
+        ) {
+            return url
+        }
+
+        if let url = Bundle.module.url(forResource: resourceName, withExtension: resourceExtension) {
+            return url
+        }
+
+        throw FixtureError.missingFixture(name)
+    }
+
+    private enum FixtureError: Error {
+        case missingFixture(String)
+    }
 }

@@ -28,6 +28,9 @@ let package = Package(
             name: "SpeakEasyTTSTests",
             dependencies: ["SpeakEasyTTS"],
             path: "Tests/SpeakEasyTTSTests",
+            resources: [
+                .process("Fixtures")
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
                 .unsafeFlags(["-F", commandLineToolsFrameworksPath])

@@ -546,6 +546,95 @@ final class AppState {
             self?.performSpeak(text)
         }
     }
+
+    func summarizeAndReadCurrentAIResponse() {
+        guard let session = activeInteractionSession,
+              let responseText = activeAIResponseText else {
+            return
+        }
+        let sessionID = session.id
+
+        let request = ReadbackRequest(
+            source: InteractionSource(
+                kind: .aiResponse,
+                text: responseText,
+                appContext: session.targetApp
+            ),
+            text: responseText,
+            profile: .technicalResponse,
+            detailLevel: .concise,
+            processingOptions: ReadbackProcessingOptions(
+                normalizeMarkdown: true,
+                summarizeCodeBlocks: true,
+                preserveTaskStructure: true,
+                requestAISummary: true
+            )
+        )
+
+        Task {
+            let result = await readbackPipeline.processWithOptionalSummary(request)
+            await MainActor.run {
+                guard self.activeInteractionSession?.id == sessionID,
+                      self.activeInteractionSession?.state == .awaitingUserReview else {
+                    return
+                }
+
+                self.interactionCoordinator.readActiveAIResponse(text: result.spokenText) { [weak self] text in
+                    self?.performSpeak(text)
+                }
+            }
+        }
+    }
+
+    func copyCurrentAIResponse() {
+        guard let responseText = activeAIResponseText else { return }
+
+        clipboardService.setText(responseText)
+    }
+
+    func insertCurrentAIResponse() {
+        guard let session = activeInteractionSession,
+              activeAIResponseText != nil else {
+            return
+        }
+
+        let destination = appProfileService.preferredDestination(for: session.targetApp)
+        interactionCoordinator.insertActiveAIResponse(destination: destination) { [weak self] text, destination, completion in
+            guard let self else {
+                completion(.failure(InteractionCoordinator.TextInsertionFailure(
+                    message: "Could not insert AI response. Click into a text field and try again."
+                )))
+                return
+            }
+
+            self.textDestinationService.write(
+                TextDestinationRequest(text: text, destination: destination)
+            ) { result in
+                switch result {
+                case .success(let destinationResult):
+                    completion(.success(destinationResult.destination))
+                case .failure(let error):
+                    completion(.failure(InteractionCoordinator.TextInsertionFailure(
+                        message: error.localizedDescription
+                    )))
+                }
+            }
+        }
+    }
+
+    func discardCurrentAIResponse() {
+        interactionCoordinator.discardActiveAIResponse()
+    }
+
+    private var activeAIResponseText: String? {
+        guard activeInteractionSession?.mode == .askAI,
+              let text = activeInteractionSession?.generatedText?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            return nil
+        }
+
+        return text
+    }
     
     // MARK: - Settings
     

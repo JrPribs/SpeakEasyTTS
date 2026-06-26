@@ -579,8 +579,187 @@ struct InteractionCoordinatorTests {
         coordinator.updatePlaybackState(.idle)
 
         #expect(spokenText == "Read this answer.")
+        #expect(coordinator.activeSession?.state == .awaitingUserReview)
+        #expect(coordinator.activeSession?.destination == .reviewPanel)
+    }
+
+    @Test
+    func askAIResponseCanBeInsertedAfterBeingReadAloud() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Read then insert."))
+        ])
+        var insertedTexts: [String] = []
+        let destination = InteractionDestination(
+            kind: .targetApp,
+            appContext: harness.targetContext,
+            writeMode: .insert
+        )
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+        coordinator.readActiveAIResponse { _ in }
+        coordinator.updatePlaybackState(.playing)
+        coordinator.updatePlaybackState(.idle)
+        coordinator.insertActiveAIResponse(destination: destination) { text, destination, completion in
+            insertedTexts.append(text)
+            completion(.success(destination))
+        }
+
+        #expect(insertedTexts == ["Read then insert."])
         #expect(coordinator.activeSession?.state == .completed)
-        #expect(coordinator.activeSession?.destination == .speech)
+        #expect(coordinator.activeSession?.destination == destination)
+    }
+
+    @Test
+    func askAISummaryReadCanUsePipelineOutputInsteadOfFullResponse() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Full answer with details."))
+        ])
+        var spokenText: String?
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+        coordinator.readActiveAIResponse(text: "Short summary.") { text in
+            spokenText = text
+        }
+
+        #expect(spokenText == "Short summary.")
+        #expect(coordinator.activeSession?.state == .reading)
+        #expect(coordinator.activeSession?.generatedText == "Full answer with details.")
+    }
+
+    @Test
+    func askAIResponseInsertRequiresExplicitAction() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Insert this answer."))
+        ])
+        var insertedTexts: [String] = []
+        let destination = InteractionDestination(
+            kind: .targetApp,
+            appContext: harness.targetContext,
+            writeMode: .insert
+        )
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+
+        #expect(insertedTexts.isEmpty)
+        #expect(coordinator.activeSession?.state == .awaitingUserReview)
+
+        coordinator.insertActiveAIResponse(destination: destination) { text, destination, completion in
+            insertedTexts.append(text)
+            completion(.success(destination))
+        }
+
+        #expect(insertedTexts == ["Insert this answer."])
+        #expect(coordinator.activeSession?.state == .completed)
+        #expect(coordinator.activeSession?.destination == destination)
+        #expect(coordinator.activeSession?.generatedText == "Insert this answer.")
+    }
+
+    @Test
+    func askAIResponseDoesNotInsertTwiceWhileInsertionIsPending() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Insert once."))
+        ])
+        var insertedTexts: [String] = []
+        var pendingCompletion: ((Result<InteractionDestination, InteractionCoordinator.TextInsertionFailure>) -> Void)?
+        let destination = InteractionDestination(kind: .targetApp, appContext: harness.targetContext)
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+
+        coordinator.insertActiveAIResponse(destination: destination) { text, _, completion in
+            insertedTexts.append(text)
+            pendingCompletion = completion
+        }
+        coordinator.insertActiveAIResponse(destination: destination) { text, _, completion in
+            insertedTexts.append(text)
+            completion(.success(destination))
+        }
+        pendingCompletion?(.success(destination))
+
+        #expect(insertedTexts == ["Insert once."])
+        #expect(coordinator.activeSession?.state == .completed)
+    }
+
+    @Test
+    func askAIResponseInsertFailureIsUserVisible() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Insert this answer."))
+        ])
+        var errorMessages: [String?] = []
+        coordinator.onDictationErrorMessageChange = { message in
+            errorMessages.append(message)
+        }
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+        coordinator.insertActiveAIResponse(destination: .reviewPanel) { _, _, completion in
+            completion(.failure(InteractionCoordinator.TextInsertionFailure(
+                message: "Could not insert AI response."
+            )))
+        }
+
+        #expect(coordinator.activeSession?.state == .failed)
+        #expect(coordinator.activeSession?.failure?.reason == .destinationUnavailable)
+        #expect(errorMessages.contains { $0 == "Could not insert AI response." })
+    }
+
+    @Test
+    func askAIResponseDiscardCancelsWithoutWriting() {
+        let coordinator = makeCoordinator()
+        let harness = AskAIHarness(promptResults: [
+            .success(AIPromptResponse(text: "Discard this answer."))
+        ])
+        var insertedTexts: [String] = []
+
+        coordinator.toggleAskAI(dependencies: harness.dependencies())
+        coordinator.handleDictationStateChange(.recording)
+        coordinator.handleAskAITranscript(
+            "prompt",
+            isFinal: true,
+            dependencies: harness.dependencies()
+        )
+        coordinator.discardActiveAIResponse()
+        coordinator.insertActiveAIResponse(destination: .reviewPanel) { text, _, completion in
+            insertedTexts.append(text)
+            completion(.success(.reviewPanel))
+        }
+
+        #expect(insertedTexts.isEmpty)
+        #expect(coordinator.activeSession?.state == .cancelled)
+        #expect(coordinator.activeSession?.cancellation?.message == "AI response discarded.")
     }
 
     private func makeCoordinator() -> InteractionCoordinator {

@@ -223,16 +223,6 @@ struct MenuBarView: View {
                     .controlSize(.small)
                 }
 
-                if canReadAIResponse {
-                    Button {
-                        appState.readCurrentAIResponse()
-                    } label: {
-                        Label("Read", systemImage: "speaker.wave.2.fill")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-
                 Spacer()
             }
 
@@ -258,6 +248,56 @@ struct MenuBarView: View {
                     .padding(6)
                     .background(Color(NSColor.textBackgroundColor))
                     .cornerRadius(6)
+            }
+
+            if canReadAIResponse {
+                HStack(spacing: 8) {
+                    Button {
+                        appState.readCurrentAIResponse()
+                    } label: {
+                        Label("Read", systemImage: "speaker.wave.2.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button {
+                        appState.summarizeAndReadCurrentAIResponse()
+                    } label: {
+                        Label("Summary", systemImage: "text.bubble")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button {
+                        appState.copyCurrentAIResponse()
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Spacer()
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        appState.insertCurrentAIResponse()
+                    } label: {
+                        Label("Insert", systemImage: "arrow.down.doc")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button(role: .destructive) {
+                        appState.discardCurrentAIResponse()
+                    } label: {
+                        Label("Discard", systemImage: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Spacer()
+                }
             }
         }
         .padding(.horizontal)

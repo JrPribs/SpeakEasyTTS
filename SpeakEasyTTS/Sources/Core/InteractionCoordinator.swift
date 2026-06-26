@@ -373,7 +373,13 @@ final class InteractionCoordinator {
 
         switch playbackState {
         case .idle:
-            if activeSession?.state == .reading {
+            if activeSession?.mode == .askAI,
+               activeSession?.state == .reading {
+                updateActiveSession { session in
+                    session.state = .awaitingUserReview
+                    session.destination = .reviewPanel
+                }
+            } else if activeSession?.state == .reading {
                 completeActiveSession()
             }
         case .playing, .paused:
@@ -383,11 +389,15 @@ final class InteractionCoordinator {
         }
     }
 
-    func readActiveAIResponse(performReadback: (String) -> Void) {
+    func readActiveAIResponse(
+        text overrideText: String? = nil,
+        performReadback: (String) -> Void
+    ) {
         guard activeSession?.mode == .askAI,
               activeSession?.state.isTerminal == false,
-              let generatedText = activeSession?.generatedText?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !generatedText.isEmpty else {
+              let text = (overrideText ?? activeSession?.generatedText)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
             return
         }
 
@@ -395,7 +405,64 @@ final class InteractionCoordinator {
             session.state = .reading
             session.destination = .speech
         }
-        performReadback(generatedText)
+        performReadback(text)
+    }
+
+    func insertActiveAIResponse(
+        destination: InteractionDestination,
+        insertText: (
+            _ text: String,
+            _ destination: InteractionDestination,
+            _ completion: @escaping (Result<InteractionDestination, TextInsertionFailure>) -> Void
+        ) -> Void
+    ) {
+        guard activeSession?.mode == .askAI,
+              activeSession?.state == .awaitingUserReview,
+              let generatedText = activeSession?.generatedText?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !generatedText.isEmpty else {
+            return
+        }
+
+        updateActiveSession { session in
+            session.state = .inserting
+            session.destination = destination
+        }
+
+        insertText(generatedText, destination) { [weak self] result in
+            guard let self,
+                  self.activeSession?.mode == .askAI,
+                  self.activeSession?.state == .inserting else {
+                return
+            }
+
+            switch result {
+            case .success(let resolvedDestination):
+                self.updateActiveSession { session in
+                    session.destination = resolvedDestination
+                    session.targetApp = resolvedDestination.appContext
+                }
+                self.completeActiveSession(generatedText: generatedText)
+            case .failure(let failure):
+                let message = failure.message
+                self.setDictationErrorMessage(message)
+                self.failActiveSession(
+                    reason: .destinationUnavailable,
+                    message: message
+                )
+            }
+        }
+    }
+
+    func discardActiveAIResponse() {
+        guard activeSession?.mode == .askAI,
+              activeSession?.state.isTerminal == false else {
+            return
+        }
+
+        cancelActiveSession(
+            message: "AI response discarded.",
+            performCancel: {}
+        )
     }
 
     func cancelActiveSession(

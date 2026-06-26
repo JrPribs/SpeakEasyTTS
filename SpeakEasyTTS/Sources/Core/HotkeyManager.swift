@@ -16,23 +16,11 @@ final class HotkeyManager {
     private var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
     private let hotkeySignature = OSType(0x53455454) // "SETT"
 
-    private enum HotkeyAction: UInt32 {
-        case readSelection = 1
-        case toggleDictation = 2
+    struct HotkeyDefinition: Equatable {
+        let action: ShortcutTriggerAction
+        let shortcut: KeyboardShortcut
     }
 
-    private struct HotkeyDefinition {
-        let action: HotkeyAction
-        let keyCode: UInt32
-        let modifiers: UInt32
-        let displayName: String
-    }
-
-    private let hotkeys: [HotkeyDefinition] = [
-        HotkeyDefinition(action: .readSelection, keyCode: 1, modifiers: UInt32(optionKey), displayName: "Option+S / ⌥S"),
-        HotkeyDefinition(action: .toggleDictation, keyCode: 2, modifiers: UInt32(optionKey), displayName: "Option+D / ⌥D")
-    ]
-    
     // MARK: - Initialization
     
     private init() {}
@@ -43,22 +31,30 @@ final class HotkeyManager {
     
     // MARK: - Public Methods
     
-    /// Register global hotkeys.
-    func registerGlobalHotkey() {
+    /// Register global hotkeys from current shortcut preferences.
+    @discardableResult
+    func registerGlobalHotkey(shortcuts: ShortcutPreferences = .default) -> [HotkeyRegistrationFailure] {
         if !hotkeyRefs.isEmpty {
             unregisterGlobalHotkey()
         }
 
         guard AXIsProcessTrusted() else {
             print("HotkeyManager: Accessibility permissions not granted")
-            return
+            return []
         }
 
-        guard installEventHandlerIfNeeded() else { return }
-
-        for hotkey in hotkeys {
-            registerHotkey(hotkey)
+        guard installEventHandlerIfNeeded() else {
+            return [HotkeyRegistrationFailure(message: "Could not install the global shortcut handler.")]
         }
+
+        var failures: [HotkeyRegistrationFailure] = []
+        for hotkey in Self.hotkeyDefinitions(from: shortcuts) {
+            if let failure = registerHotkey(hotkey) {
+                failures.append(failure)
+            }
+        }
+
+        return failures
     }
 
     /// Unregister global hotkeys.
@@ -77,6 +73,13 @@ final class HotkeyManager {
     }
 
     // MARK: - Private Methods
+
+    static func hotkeyDefinitions(from shortcuts: ShortcutPreferences) -> [HotkeyDefinition] {
+        [
+            HotkeyDefinition(action: shortcuts.readSelection.action, shortcut: shortcuts.readSelection.shortcut),
+            HotkeyDefinition(action: shortcuts.dictation.action, shortcut: shortcuts.dictation.shortcut)
+        ]
+    }
 
     private func installEventHandlerIfNeeded() -> Bool {
         guard eventHandler == nil else { return true }
@@ -121,15 +124,15 @@ final class HotkeyManager {
         return true
     }
 
-    private func registerHotkey(_ hotkey: HotkeyDefinition) {
+    private func registerHotkey(_ hotkey: HotkeyDefinition) -> HotkeyRegistrationFailure? {
         var hotkeyID = EventHotKeyID()
         hotkeyID.signature = hotkeySignature
-        hotkeyID.id = hotkey.action.rawValue
+        hotkeyID.id = hotkey.action.hotkeyID
 
         var hotkeyRef: EventHotKeyRef?
         let status = RegisterEventHotKey(
-            hotkey.keyCode,
-            hotkey.modifiers,
+            hotkey.shortcut.keyCode,
+            hotkey.shortcut.modifiers.rawValue,
             hotkeyID,
             GetApplicationEventTarget(),
             0,
@@ -137,16 +140,19 @@ final class HotkeyManager {
         )
 
         if status == noErr, let hotkeyRef {
-            hotkeyRefs[hotkey.action.rawValue] = hotkeyRef
-            print("HotkeyManager: Global hotkey registered (\(hotkey.displayName))")
+            hotkeyRefs[hotkey.action.hotkeyID] = hotkeyRef
+            print("HotkeyManager: Global hotkey registered (\(hotkey.shortcut.displayName))")
+            return nil
         } else {
-            print("HotkeyManager: Failed to register \(hotkey.displayName): \(status)")
+            let message = "Could not register \(hotkey.action.displayName) shortcut \(hotkey.shortcut.displayName)."
+            print("HotkeyManager: \(message) Status: \(status)")
+            return HotkeyRegistrationFailure(message: message)
         }
     }
 
     private func handleHotkey(id: UInt32) {
         DispatchQueue.main.async {
-            switch HotkeyAction(rawValue: id) {
+            switch ShortcutTriggerAction(hotkeyID: id) {
             case .readSelection:
                 print("HotkeyManager: Read selection hotkey pressed")
                 AppState.shared.speakSelectedText()
@@ -156,6 +162,32 @@ final class HotkeyManager {
             case .none:
                 print("HotkeyManager: Unknown hotkey id \(id)")
             }
+        }
+    }
+}
+
+struct HotkeyRegistrationFailure: Equatable {
+    let message: String
+}
+
+private extension ShortcutTriggerAction {
+    var hotkeyID: UInt32 {
+        switch self {
+        case .readSelection:
+            return 1
+        case .toggleDictation:
+            return 2
+        }
+    }
+
+    init?(hotkeyID: UInt32) {
+        switch hotkeyID {
+        case 1:
+            self = .readSelection
+        case 2:
+            self = .toggleDictation
+        default:
+            return nil
         }
     }
 }

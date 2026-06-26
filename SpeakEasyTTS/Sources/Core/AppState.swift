@@ -125,7 +125,7 @@ final class AppState {
             if granted {
                 permissionCheckTimer?.invalidate()
                 permissionCheckTimer = nil
-                HotkeyManager.shared.registerGlobalHotkey()
+                registerConfiguredHotkeys()
             } else {
                 updateSelectionState(false)
             }
@@ -157,6 +157,14 @@ final class AppState {
     func updateAutoReadDelay(_ delay: Double) {
         settings.autoReadDelay = delay
         saveSettings()
+    }
+
+    func updateShortcutPreferences(_ shortcuts: ShortcutPreferences) {
+        settings.shortcuts = shortcuts
+        saveSettings()
+        if hasAccessibilityPermissions {
+            registerConfiguredHotkeys()
+        }
     }
     
     // MARK: - Voice Management
@@ -463,7 +471,7 @@ final class AppState {
         if currentlyTrusted != hasAccessibilityPermissions {
             hasAccessibilityPermissions = currentlyTrusted
             if currentlyTrusted {
-                HotkeyManager.shared.registerGlobalHotkey()
+                registerConfiguredHotkeys()
             } else {
                 permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
                     self?.checkAccessibilityPermissions()
@@ -506,6 +514,13 @@ final class AppState {
     private func updateSelectionState(_ newValue: Bool) {
         if hasSelectedText != newValue {
             hasSelectedText = newValue
+        }
+    }
+
+    private func registerConfiguredHotkeys() {
+        let failures = HotkeyManager.shared.registerGlobalHotkey(shortcuts: settings.shortcuts)
+        if !failures.isEmpty {
+            errorMessage = failures.map(\.message).joined(separator: "\n")
         }
     }
 

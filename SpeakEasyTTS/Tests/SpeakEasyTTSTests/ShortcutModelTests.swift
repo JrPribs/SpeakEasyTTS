@@ -54,4 +54,18 @@ struct ShortcutModelTests {
         #expect(optionSpace.displayName == "Option+Space / ⌥Space")
         #expect(commandShiftUnknown.displayName == "Shift+Command+Key 123 / ⇧⌘Key 123")
     }
+
+    @Test
+    func hotkeyDefinitionsUseStoredShortcutPreferences() {
+        var preferences = ShortcutPreferences.default
+        preferences.dictation.shortcut = KeyboardShortcut(keyCode: KeyCodeDisplayName.space, modifiers: [.control, .option])
+        preferences.readSelection.shortcut = KeyboardShortcut(keyCode: KeyCodeDisplayName.s, modifiers: [.command])
+
+        let definitions = HotkeyManager.hotkeyDefinitions(from: preferences)
+
+        #expect(definitions == [
+            HotkeyManager.HotkeyDefinition(action: .readSelection, shortcut: preferences.readSelection.shortcut),
+            HotkeyManager.HotkeyDefinition(action: .toggleDictation, shortcut: preferences.dictation.shortcut)
+        ])
+    }
 }

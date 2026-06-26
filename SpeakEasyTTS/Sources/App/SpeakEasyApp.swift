@@ -58,7 +58,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize hotkey manager for global shortcuts
         hotkeyManager = HotkeyManager.shared
-        hotkeyManager?.registerGlobalHotkey()
+        hotkeyManager?.registerGlobalHotkey(shortcuts: AppState.shared.settings.shortcuts)
         
         // Request accessibility permissions if needed
         checkAccessibilityPermissions()

@@ -45,14 +45,13 @@ final class AppState {
     // MARK: - Private
     private var cancellables = Set<AnyCancellable>()
     private var hasInsertedCurrentDictation = false
-    private static let legacyDefaultEdgeVoiceId = "en-US-GuyNeural"
     
     // MARK: - Initialization
     
     private init() {
         // Initialize settings first to know which engine to use
         let store = SettingsStore()
-        let loadedSettings = Self.resolvePlaybackSettings(store.loadSettings(), store: store)
+        let loadedSettings = store.loadMigratedSettings()
         
         // Initialize both speech services
         let native = NativeSpeechService()
@@ -510,26 +509,6 @@ final class AppState {
         }
     }
 
-    private static func resolvePlaybackSettings(_ loadedSettings: SpeechSettings, store: SettingsStore) -> SpeechSettings {
-        var settings = loadedSettings
-        let isOldDefaultEdgeSelection = settings.ttsEngine == .edgeTTS
-            && settings.selectedVoiceId == legacyDefaultEdgeVoiceId
-
-        if isOldDefaultEdgeSelection {
-            print("[TTS] Migrating default playback engine to native macOS speech")
-            settings.ttsEngine = .native
-            settings.selectedVoiceId = nil
-            store.saveSettings(settings)
-        } else if settings.ttsEngine == .edgeTTS && !EdgeTTSService.isAvailable() {
-            print("[TTS] Edge TTS unavailable at launch; using native macOS speech")
-            settings.ttsEngine = .native
-            settings.selectedVoiceId = nil
-            store.saveSettings(settings)
-        }
-
-        return settings
-    }
-    
     private func setupSpeechServiceCallbacks() {
         speechService.onStateChange = { [weak self] state in
             DispatchQueue.main.async {

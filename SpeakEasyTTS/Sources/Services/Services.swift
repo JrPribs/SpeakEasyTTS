@@ -9,8 +9,14 @@ import AppKit
 
 /// Handles persistence of user settings using UserDefaults
 final class SettingsStore {
-    private let defaults = UserDefaults.standard
+    private static let legacyDefaultEdgeVoiceId = "en-US-GuyNeural"
+
+    private let defaults: UserDefaults
     private let settingsKey = "com.speakeasy.settings"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
     
     /// Load saved settings or return defaults
     func loadSettings() -> SpeechSettings {
@@ -18,6 +24,43 @@ final class SettingsStore {
               let settings = try? JSONDecoder().decode(SpeechSettings.self, from: data) else {
             return .default
         }
+        return settings
+    }
+
+    /// Load saved settings and persist any playback migrations.
+    func loadMigratedSettings(edgeTTSAvailable: Bool = EdgeTTSService.isAvailable()) -> SpeechSettings {
+        let loadedSettings = loadSettings()
+        let migratedSettings = Self.migratedPlaybackSettings(
+            loadedSettings,
+            edgeTTSAvailable: edgeTTSAvailable
+        )
+
+        if migratedSettings != loadedSettings {
+            saveSettings(migratedSettings)
+        }
+
+        return migratedSettings
+    }
+
+    /// Resolve legacy playback settings without touching persistence.
+    static func migratedPlaybackSettings(
+        _ loadedSettings: SpeechSettings,
+        edgeTTSAvailable: Bool
+    ) -> SpeechSettings {
+        var settings = loadedSettings
+        let isOldDefaultEdgeSelection = settings.ttsEngine == .edgeTTS
+            && settings.selectedVoiceId == legacyDefaultEdgeVoiceId
+
+        if isOldDefaultEdgeSelection {
+            print("[TTS] Migrating default playback engine to native macOS speech")
+            settings.ttsEngine = .native
+            settings.selectedVoiceId = nil
+        } else if settings.ttsEngine == .edgeTTS && !edgeTTSAvailable {
+            print("[TTS] Edge TTS unavailable at launch; using native macOS speech")
+            settings.ttsEngine = .native
+            settings.selectedVoiceId = nil
+        }
+
         return settings
     }
     

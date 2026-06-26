@@ -1,246 +1,282 @@
 # SpeakEasy Flow
 
-A lightweight macOS menu bar app for verbatim dictation and text-to-speech. Dictate into the focused app with minimal rewriting, or read selected text back from your screen.
+A lightweight native macOS menu bar app for verbatim dictation, text-to-speech readback, and optional AI-assisted voice prompts. The default speech-to-text path stays predictable: it uses Apple's Speech framework and inserts recognized words without an LLM rewrite step.
 
 ![macOS 14.0+](https://img.shields.io/badge/macOS-14.0+-blue.svg)
-![Swift 5.9+](https://img.shields.io/badge/Swift-5.9+-orange.svg)
+![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
 ## Features
 
-- **🎯 Global Hotkeys** - Press `Option+D` for dictation or `Option+S` to read selected text
-- **🎤 Verbatim Dictation** - Native speech-to-text inserts recognized words without an AI rewrite step
-- **📋 Clipboard Reading** - Instantly read text from your clipboard
-- **🖥️ Screen Readback** - Read selected text from other apps through the macOS Accessibility API
-- **📝 Floating Window** - Manual text input with a clean, minimal interface
-- **🎙️ Multiple Voices** - Choose from all available macOS system voices
-- **⚡ Speed Control** - Adjust reading speed from 0.2x to 2.0x
-- **🔊 Playback Controls** - Play, pause, resume, and stop at any time
-- **💾 Persistent Settings** - Your voice and speed preferences are remembered
-- **🌐 Edge TTS (Optional)** - High-quality Microsoft neural voices (requires internet)
-
-## Screenshots
-
-```
-┌─────────────────────────────────────┐
-│  🎤 SpeakEasy Flow                  │
-│  ─────────────────────────────────  │
-│  Verbatim Dictation          ⌥D     │
-│  [Start]                            │
-│  ─────────────────────────────────  │
-│  [Enter text to speak...]      [▶]  │
-│                                     │
-│  [Read Clipboard] [Read Selection]  │
-│  ─────────────────────────────────  │
-│  Voice: [Samantha (Enhanced)    ▼]  │
-│  ─────────────────────────────────  │
-│  Speed: ━━━━━━●━━━━━━━━━  1.0x     │
-│  ─────────────────────────────────  │
-│  ⚙️ Settings...              Quit   │
-└─────────────────────────────────────┘
-```
+- **Verbatim dictation** - Dictate into the tracked target app with immediate insertion.
+- **Configurable dictation trigger** - Use toggle, hold-to-record, or hold with Space latch.
+- **Readback** - Read selected text, clipboard text, manual text, and Claude Code plan files.
+- **Readback processing** - Choose raw, clean prose, summarized response, plan summary, or task-list modes.
+- **Ask AI** - Dictate a prompt, review the generated response, then read, copy, insert, or discard it.
+- **Local Ask AI history** - Optional plain-text `UserDefaults` history for follow-up prompts.
+- **Floating overlay** - Compact always-on-top controls with recording, latched, processing, and response-ready states.
+- **Permissions diagnostics** - Settings shows Accessibility, Microphone, Speech Recognition, and optional AI provider state with recovery actions.
+- **Native and Edge TTS** - Use macOS voices offline, or optional Edge TTS via `python3 -m edge_tts`.
 
 ## Requirements
 
-- macOS 14.0 (Sonoma) or later
-- Xcode 15.0+ (for building from source)
-- Swift 5.9+
-- Accessibility permissions (for global hotkeys, selected-text readback, and dictation insertion)
-- Microphone and Speech Recognition permissions (for dictation)
+- macOS 14.0 Sonoma or later
+- Swift 6 toolchain / Xcode 16 or later for building from source
+- Accessibility permission for global shortcuts, selected-text readback, overlay selection detection, and insertion into other apps
+- Microphone and Speech Recognition permissions for dictation
+- Optional: `edge-tts` Python package for Edge TTS voices
+- Optional: local Ollama service for Ask AI responses
 
-## Installation
+## Build And Run
 
-### Option 1: Download Release
-
-1. Download the latest `.app` from the Releases page
-2. Move `SpeakEasyTTS.app` to your Applications folder
-3. Right-click → Open (first time only, to bypass Gatekeeper)
-4. Grant Accessibility, Microphone, and Speech Recognition permissions when prompted
-
-### Option 2: Build from Source
+All commands below run from this SwiftPM package directory:
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/SpeakEasyTTS.git
-cd SpeakEasyTTS
+cd SpeakEasyTTS/SpeakEasyTTS
 
-# Build the app
+# Debug build
+swift build
+
+# Test build/link
+swift test
+
+# Release app bundle at build/release/SpeakEasyTTS.app
 ./build.sh
 
-# Install to Applications
-cp -r build/release/SpeakEasyTTS.app /Applications/
+# Run the app bundle
+open build/release/SpeakEasyTTS.app
+```
 
-# Run
+Use the app bundle for permission testing. `build.sh` generates the `Info.plist` privacy strings that macOS uses for Microphone and Speech Recognition prompts.
+
+## Install
+
+```bash
+./build.sh
+cp -r build/release/SpeakEasyTTS.app /Applications/
 open /Applications/SpeakEasyTTS.app
 ```
 
-## Usage
+On first launch, grant permissions from Settings -> Permissions or from System Settings -> Privacy & Security.
 
-### Basic Usage
-
-1. Click the SpeakEasy icon in your menu bar
-2. Type or paste text in the input field
-3. Click Play or press `Cmd+Return`
+## Core Workflows
 
 ### Dictate Into Any App
 
-1. Click into a text field in another app
-2. Press `Option+D`
-3. Speak normally
-4. Press `Option+D` again to stop and insert the recognized text
+1. Click into a text field in the target app.
+2. Press the dictation shortcut, default `Option+D`.
+3. Speak normally.
+4. Stop according to the configured trigger mode:
+   - Toggle: press `Option+D` again.
+   - Hold to Record: release the shortcut.
+   - Hold with Space Latch: press Space while holding the shortcut to latch or unlatch.
+5. SpeakEasy inserts the recognized text into the tracked target app.
+
+Dictation is verbatim by design. It does not summarize, style, or clean up the recognized transcript.
+
+### Ask AI
+
+1. Open the menu bar dropdown and use Ask AI, or use the active overlay state while prompting.
+2. Dictate a prompt.
+3. Send the prompt and wait for the response-ready state.
+4. Review the generated text in the interaction panel.
+5. Choose Read, Summary, Copy, Insert, or Discard.
+
+Insertion is explicit. Ask AI never writes generated text into another app until you choose Insert.
 
 ### Read Selected Text
 
-1. Select text in any application
-2. Press `Option+S`
-3. SpeakEasy will read the selected text aloud
+1. Select text in another app.
+2. Press `Option+S` or choose Read Selection from the menu.
+3. SpeakEasy reads the selection using the configured readback profile.
 
-### Read from Clipboard
+If selection access fails, check Settings -> Permissions and confirm Accessibility is granted.
 
-1. Copy text to clipboard (`Cmd+C`)
-2. Click "Read Clipboard" in the menu bar dropdown
+### Read Clipboard Or Manual Text
 
-### Keyboard Shortcuts
+- Copy text and choose Read Clipboard.
+- Type into the menu input field and press the play button.
+- Open the floating input window for larger manual text.
+
+### Read Claude Code Plans
+
+Use the Claude Code plan section to read the latest local plan file or choose a plan manually. Plan readback uses the same readback pipeline and detail settings.
+
+## Settings
+
+### General
+
+- Choose Native macOS TTS or optional Edge TTS.
+- Native TTS works offline through `AVSpeechSynthesizer`.
+- Edge TTS requires `python3 -m edge_tts` and network access.
+
+### Dictation
+
+- Recognition is currently verbatim.
+- Trigger behavior is configurable.
+- Dictation inserts into the focused/tracked target app.
+- Explicit locale selection and review-before-insert are deferred.
+
+### Readback
+
+- Choose the default processing mode:
+  - Raw
+  - Clean Prose
+  - Summarized Response
+  - Plan Summary
+  - Task List
+- Choose Brief, Standard, or Detailed output.
+- Enable optional AI summary requests when a provider is available.
+- Configure auto-read on text selection and delay.
+
+### Shortcuts
+
+Default shortcuts:
 
 | Shortcut | Action |
-|----------|--------|
-| `Option+D` | Toggle dictation (global) |
-| `Option+S` | Read selected text (global) |
-| `Cmd+Return` | Play text in input window |
-| `Space` | Pause/Resume (when focused) |
-| `Escape` | Stop playback |
-| `Cmd+,` | Open Settings |
+| --- | --- |
+| `Option+D` | Dictation |
+| `Option+S` | Read selected text |
+| `Space` | Pause/resume playback when focused |
+| `Escape` | Stop playback or cancel active dictation from auxiliary monitoring |
+| `Command+,` | Open Settings |
 
-## Configuration
+Shortcut recording supports Command, Option, Control, Shift, and regular keys. Function/Globe capture depends on hardware and macOS settings.
 
-### Voice Selection
+### Permissions
 
-1. Open Settings (`Cmd+,`)
-2. Go to the "Voices" tab
-3. Browse and preview available voices
-4. Click to select your preferred voice
+Settings -> Permissions shows:
 
-**Pro Tip:** Download Enhanced or Premium voices from System Settings → Accessibility → Spoken Content → System Voice → Manage Voices for better quality.
+- Accessibility
+- Microphone
+- Speech Recognition
+- AI Provider
 
-### Speed Adjustment
+Missing or denied required permissions include recovery actions. AI provider state is optional unless you use Ask AI or AI summaries.
 
-Adjust the speed slider in the menu bar dropdown or Settings:
-- 0.2x - Very slow (for learning)
-- 0.5x - Slow
-- 1.0x - Normal speed
-- 1.5x - Fast
-- 2.0x - Very fast
+### AI
 
-### TTS Engine
+The current provider adapter targets local Ollama. Provider status is stored without secrets. Ask AI history is disabled by default; when enabled, the app stores the latest 20 prompt/response turns in plain text `UserDefaults` under `com.speakeasy.ai-conversation.session`.
 
-Choose between:
-- **Native (macOS)** - Uses built-in AVSpeechSynthesizer. Works offline.
-- **Edge TTS** - Uses Microsoft's neural voices. Higher quality, requires internet.
+Verbatim dictation and readback summaries do not update Ask AI conversation history.
 
-### Dictation Mode
+## Optional Edge TTS Setup
 
-Dictation defaults to verbatim mode. The app uses Apple's Speech framework result segments directly and disables automatic punctuation where supported, so it does not run dictated text through an LLM cleanup step.
+```bash
+python3 -m pip install edge-tts
+```
 
-### Ask AI History
+Then open Settings -> General and choose Edge TTS. If Edge TTS is unavailable, SpeakEasy falls back to native macOS speech where possible and reports a recoverable error.
 
-Ask AI conversation history is disabled by default. When enabled from the Ask AI section, recent prompt/response turns are stored locally in plain text `UserDefaults` under `com.speakeasy.ai-conversation.session` and included as context for follow-up prompts.
+## Optional Ollama Setup
 
-The store keeps the latest 20 turns. Use the trash button in the Ask AI section to clear stored turns without changing the history toggle. Verbatim dictation and readback summaries are not stored in Ask AI history.
+Ask AI uses the provider-neutral AI layer with a local Ollama adapter. Install and run Ollama separately, then make sure the configured model is available locally. If the provider is unavailable, Ask AI leaves the response in a recoverable error state and does not insert text.
+
+## QA
+
+Automated gates:
+
+```bash
+swift test
+swift build
+git diff --check
+```
+
+In this environment, `swift test` builds and links the Swift Testing bundle; it may not print individual test execution lines.
+
+Manual QA for permission-heavy flows is tracked in [`../docs/manual-qa.md`](../docs/manual-qa.md). Run manual QA from the app bundle, not `swift run`.
+
+## Troubleshooting
+
+### TTS Playback Does Not Start
+
+1. Check system volume and output device.
+2. Try Settings -> Voices -> Preview with a native voice.
+3. Switch Settings -> General -> TTS Engine to Native.
+4. If Edge TTS is selected, confirm `python3 -m edge_tts` is installed and reachable.
+5. Check Console.app for `com.speakeasy.tts` logs in the `tts` and `readback` categories.
+
+### Global Hotkeys Do Not Work
+
+1. Open Settings -> Permissions and check Accessibility.
+2. Use the recovery button or open System Settings -> Privacy & Security -> Accessibility.
+3. Enable SpeakEasyTTS and restart the app if macOS asks.
+
+### Dictation Does Not Start
+
+1. Open Settings -> Permissions.
+2. Confirm Accessibility, Microphone, and Speech Recognition are granted.
+3. Run `build/release/SpeakEasyTTS.app`; `swift run` does not carry the generated privacy strings.
+
+### Dictation Inserts Into The Wrong Place
+
+1. Focus the target text field before starting dictation.
+2. Avoid clicking into SpeakEasy while recording unless using the overlay.
+3. If the overlay is active, SpeakEasy uses the last tracked external target app for insertion.
+
+### Ask AI Has No Response
+
+1. Check Settings -> Permissions -> AI Provider.
+2. Confirm Ollama is running and the model is installed.
+3. Use the interaction panel to discard the failed session and try again.
 
 ## Project Structure
 
-```
+```text
 SpeakEasyTTS/
-├── Package.swift              # Swift Package manifest
-├── build.sh                   # Build script
+├── Package.swift
+├── build.sh
 ├── README.md
-└── Sources/
-    ├── App/
-    │   └── SpeakEasyApp.swift     # App entry point
-    ├── Core/
-    │   ├── AppState.swift         # Central state management
-    │   ├── DictationService.swift # Native speech-to-text capture
-    │   ├── SpeechService.swift    # TTS protocol & native impl
-    │   ├── EdgeTTSService.swift   # Edge TTS implementation
-    │   └── HotkeyManager.swift    # Global keyboard shortcuts
-    ├── Models/
-    │   └── Models.swift           # Data models
-    ├── Services/
-    │   └── Services.swift         # Settings, Voice, Clipboard
-    ├── Views/
-    │   ├── MenuBarView.swift      # Menu bar interface
-    │   ├── InputWindowView.swift  # Floating input window
-    │   └── SettingsView.swift     # Preferences window
-    └── Resources/
-        └── Info.plist
+├── Sources/
+│   ├── App/
+│   │   └── SpeakEasyApp.swift
+│   ├── Core/
+│   │   ├── AppLog.swift
+│   │   ├── AppState.swift
+│   │   ├── DictationService.swift
+│   │   ├── HotkeyManager.swift
+│   │   ├── InteractionCoordinator.swift
+│   │   ├── ReadbackPipeline.swift
+│   │   └── SpeechService.swift
+│   ├── Models/
+│   ├── Services/
+│   │   ├── AIInteractionService.swift
+│   │   ├── OllamaProvider.swift
+│   │   ├── PermissionService.swift
+│   │   ├── TextDestinationService.swift
+│   │   └── TextSourceService.swift
+│   └── Views/
+│       ├── FloatingOverlayView.swift
+│       ├── InteractionPanelView.swift
+│       ├── MenuBarView.swift
+│       └── Settings/
+└── Tests/
+    └── SpeakEasyTTSTests/
 ```
 
 ## Architecture
 
-The app follows a clean architecture with:
+SpeakEasy uses an observable singleton plus small service adapters:
 
-- **@Observable AppState** - Central state management using Swift's new observation framework
-- **Protocol-based Services** - SpeechService protocol allows swapping TTS engines
-- **Native Dictation Service** - Speech framework + AVAudioEngine speech-to-text capture
-- **SwiftUI Views** - Modern declarative UI with menu bar extra
-- **Carbon Events** - Global hotkey registration for readback and dictation shortcuts
+- `AppState` owns app-level state, settings, and service composition.
+- `InteractionCoordinator` tracks dictation, readback, Ask AI, insertion, cancellation, and review states.
+- `DictationService` wraps Apple's Speech framework and `AVAudioEngine`.
+- `SpeechService` supports native macOS speech and optional Edge TTS.
+- `TextSourceService` and `TextDestinationService` isolate selection, clipboard, and target-app writing.
+- `ReadbackPipeline` handles deterministic speech-friendly processing and optional AI summaries.
+- `PermissionService` centralizes runtime permission diagnostics.
 
-## Edge TTS Setup (Optional)
+## Logging
 
-For higher quality neural voices:
-
-```bash
-# Install Edge TTS for Python
-python3 -m pip install edge-tts
-
-# Enable in SpeakEasy Settings -> General -> TTS Engine -> Edge TTS
-```
-
-## Troubleshooting
-
-### Global Hotkey Not Working
-
-1. Open System Settings → Privacy & Security → Accessibility
-2. Find SpeakEasyTTS and enable it
-3. Restart the app
-
-### No Sound
-
-1. Check system volume
-2. Verify the selected voice is installed
-3. Try a different voice
-
-### Dictation Not Starting
-
-1. Open System Settings → Privacy & Security → Microphone and enable SpeakEasyTTS
-2. Open System Settings → Privacy & Security → Speech Recognition and enable SpeakEasyTTS
-3. Run the bundled app from `build/release/SpeakEasyTTS.app`; `swift run` does not carry the generated privacy strings
-
-### App Not Starting
-
-1. Check Console.app for error messages
-2. Ensure macOS 14.0 or later
-3. Try rebuilding from source
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Runtime logs use OSLog categories through `AppLog`: `app`, `permissions`, `dictation`, `shortcuts`, `readback`, `ai`, `insertion`, and `tts`. Logs intentionally avoid raw dictated text, selected text, prompts, and generated responses.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License.
 
 ## Acknowledgments
 
 - Apple's AVFoundation and Speech frameworks
-- Microsoft Edge TTS service (via node-edge-tts)
-- SwiftUI and the new @Observable macro
-- The macOS developer community
-
----
-
-Made for accessibility and productivity
+- SwiftUI and AppKit
+- Microsoft Edge TTS via `edge-tts`
+- Ollama for local AI provider support
